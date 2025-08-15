@@ -1,999 +1,501 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gun.js Chat & Drawing</title>
-  <!-- Gun.js -->
-  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
-  <style>
-    /* Base Styles */
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: linear-gradient(135deg, #1e1e1e, #121212);
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      overflow: hidden;
-    }
-    h2, h3 { margin: 10px; }
-    /* Tabs */
-    #tabs {
-      display: flex;
-      border-bottom: 2px solid #444;
-      padding: 5px 10px;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      background: #1e1e1e;
-      z-index: 20;
-    }
-    .tab {
-      padding: 8px 12px;
-      background: #333;
-      cursor: pointer;
-      margin-right: 5px;
-      border-radius: 5px 5px 0 0;
-      transition: background 0.2s;
-    }
-    .tab:hover { background: #444; }
-    .tab.active { background: #555; }
-    .close-tab { margin-left: 5px; color: #e74c3c; cursor: pointer; }
-    /* Container & Chat Box */
-    #chat-container {
-      flex-grow: 1;
-      display: flex;
-      flex-direction: column;
-      margin-top: 50px;
-      overflow: hidden;
-      position: relative;
-    }
-    #chat-box {
-      flex-grow: 1;
-      overflow-y: auto;
-      border: 1px solid #444;
-      padding: 10px;
-      background: #222;
-      margin: 10px;
-      border-radius: 5px;
-      position: relative;
-    }
-    /* Text Chat Input */
-    #message-input {
-      width: calc(100% - 20px);
-      padding: 10px;
-      border: none;
-      background: #333;
-      color: white;
-      margin: 10px;
-      border-radius: 5px;
-      font-size: 16px;
-    }
-    /* User List & Typing Indicator */
-    #user-list {
-      background: #222;
-      padding: 10px;
-      margin: 10px;
-      border-radius: 5px;
-      max-height: 150px;
-      overflow-y: auto;
-    }
-    #typing-indicator {
-      font-size: 12px;
-      color: #bbb;
-      margin: 0 10px;
-    }
-    /* Drawing Board Canvas */
-    #drawing-board-canvas {
-      width: 100%;
-      height: 100%;
-      border: 1px solid #444;
-      background: #fff;
-      border-radius: 5px;
-      cursor: crosshair;
-      position: absolute;
-      top: 0;
-      left: 0;
-    }
-    /* Tracer Overlay Canvas */
-    #tracer-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-      z-index: 2;
-      border-radius: 5px;
-    }
-    /* Custom Drawing Menu */
-    #drawing-menu {
-      display: none;
-      position: absolute;
-      background: #fff;
-      border: 1px solid #444;
-      padding: 10px;
-      z-index: 100;
-      color: #000;
-      border-radius: 5px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    }
-    #drawing-menu label { font-size: 12px; margin-right: 5px; }
-    #drawing-menu button,
-    #clear-board-button {
-      border: none;
-      margin: 2px;
-      width: 24px;
-      height: 24px;
-      cursor: pointer;
-      border-radius: 3px;
-    }
-    #clear-board-button {
-      background: #e74c3c;
-      color: #fff;
-      font-size: 12px;
-      padding: 2px 6px;
-      border-radius: 3px;
-      margin-top: 5px;
-    }
-    #thickness-range { vertical-align: middle; }
-    #tracer-toggle-label { font-size: 12px; margin-left: 5px; }
-    /* Modal Container for Overlays */
-    #modal-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.8);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 200;
-    }
-    .modal-content {
-      background: #fff;
-      color: #000;
-      padding: 20px;
-      border-radius: 5px;
-      max-width: 90%;
-      max-height: 90%;
-      overflow: auto;
-      position: relative;
-      text-align: center;
-    }
-    .modal-close {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: #e74c3c;
-      color: #fff;
-      border: none;
-      padding: 5px 10px;
-      border-radius: 3px;
-      cursor: pointer;
-    }
-    /* Arrow (fixed at top left) */
-    .arrow {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      font-size: 48px;
-      animation: bounce 1s infinite;
-    }
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
-    }
-  </style>
+<meta charset="utf-8" />
+<title>Cheat Click — Shuttle + Grid (Global Sparks)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+  :root{
+    --bg:#060708;
+    --panel: rgba(12,16,20,0.86);
+    --accent: #14f0e6;
+    --muted: #9fb2c9;
+    --text: #dfeff7;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:"Share Tech Mono", monospace;overflow:hidden}
+  /* canvases stack under UI; pointer-events none so UI works */
+  canvas{position:fixed;left:0;top:0;display:block;pointer-events:none}
+
+  /* CENTERED GLASS BOX */
+  .center {
+    position: absolute;
+    left:50%;
+    top:50%;
+    transform: translate(-50%,-50%);
+    width: min(980px, 94vw);
+    max-height: 92vh;
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 18px;
+    padding: 18px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    box-shadow: 0 12px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.02);
+    backdrop-filter: blur(6px) saturate(1.03);
+    border: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .logo-pane { padding: 6px 10px; display:flex; flex-direction:column; gap:8px; align-items:flex-start; overflow:auto; }
+  #asciiTitle { white-space: pre; line-height: 0.92; font-size:12px; color:var(--text); user-select:none; }
+  #asciiTitle div{ display:block }
+  #asciiTitle span{ display:inline-block; transition: transform 140ms linear, color 160ms linear, filter 160ms linear; will-change: transform, color; }
+
+  .note { color:var(--muted); font-size:12px; margin-top:6px; }
+
+  .ui-pane{
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(6,8,10,0.45);
+    border: 1px solid rgba(255,255,255,0.02);
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    align-items:center;
+  }
+
+  .input-row { display:flex; gap:8px; width:100%; justify-content:center; flex-wrap:wrap; }
+  input[type="text"]{
+    font-family:inherit; padding:10px; min-width:160px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);
+    background: rgba(0,0,0,0.35); color:var(--text); outline:none;
+  }
+
+  .bigbutton{
+    padding:14px 18px; border-radius:10px; min-width:240px; cursor:pointer;
+    background: linear-gradient(180deg, rgba(20,240,230,0.12), rgba(0,0,0,0.03));
+    color:var(--text); border:1px solid rgba(20,240,230,0.22); font-weight:700;
+  }
+  .bigbutton:active{ transform: translateY(2px) }
+
+  .stats{ display:flex; gap:10px; justify-content:center; width:100%; }
+  .stat{ background: rgba(0,0,0,0.2); padding:10px 12px; border-radius:8px; font-size:13px; color:var(--muted); text-align:center; min-width:90px }
+  .stat .val{ font-size:20px; color:var(--accent); text-shadow: 0 4px 18px rgba(20,240,230,0.08) }
+
+  table{ width:100%; border-collapse:collapse; font-size:12px; color:var(--text) }
+  thead th{ text-align:left; padding:8px; color:var(--muted); font-size:12px; border-bottom:1px solid rgba(255,255,255,0.03) }
+  tbody td{ padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.02) }
+  tbody tr:hover td{ background: rgba(20,240,230,0.02) }
+
+  .foot { font-size:11px; color:var(--muted); text-align:center; margin-top:6px }
+
+  @media (max-width:920px){
+    .center{ grid-template-columns: 1fr; width: 96vw; }
+    .ui-pane{ order:2 }
+    .logo-pane{ order:1 }
+  }
+</style>
 </head>
 <body>
-  <div id="tabs"></div>
-  <div id="chat-container">
-    <h2>Gun.js Chat</h2>
-    <div id="chat-box"></div>
-    <div id="user-list"></div>
-    <div id="typing-indicator"></div>
-    <input type="text" id="message-input" placeholder="Type a message..." />
+
+<!-- canvases: fluid background, interactive grid, click particles -->
+<canvas id="fluidCanvas"></canvas>
+<canvas id="gridCanvas"></canvas>
+<canvas id="clickCanvas"></canvas>
+
+<div class="center" role="main" aria-label="game container">
+  <div class="logo-pane">
+    <div id="asciiTitle" aria-hidden="true"></div>
+    <div class="note">Use as many external cheats as you want — leaderboard only accepts strictly higher scores per name.</div>
+    <div style="font-size:11px;color:var(--muted)">Move the cursor near the logo or grid to disturb them. Click anywhere on the page to spark.</div>
   </div>
 
-  <!-- Custom Drawing Menu (for drawing board) -->
-  <div id="drawing-menu">
-    <div>
-      <label>Pen Color:</label>
-      <button class="color-option" data-color="#000000" style="background:#000000;"></button>
-      <button class="color-option" data-color="#ff0000" style="background:#ff0000;"></button>
-      <button class="color-option" data-color="#00ff00" style="background:#00ff00;"></button>
-      <button class="color-option" data-color="#0000ff" style="background:#0000ff;"></button>
-      <button class="color-option" data-color="#ffff00" style="background:#ffff00;"></button>
+  <div class="ui-pane" aria-live="polite">
+    <div class="input-row">
+      <input id="name" type="text" maxlength="15" placeholder="Your name (max 15 chars)">
+      <button id="startBtn" class="bigbutton">START GAME</button>
     </div>
-    <div style="margin-top:10px;">
-      <label for="thickness-range">Thickness:</label>
-      <input type="range" id="thickness-range" min="1" max="10" value="2" />
+
+    <div class="stats">
+      <div class="stat"><div style="font-size:11px;color:var(--muted)">TIME LEFT</div><div id="timer" class="val">5</div></div>
+      <div class="stat"><div style="font-size:11px;color:var(--muted)">SCORE</div><div id="score" class="val">0</div></div>
     </div>
-    <div style="margin-top:10px;">
-      <input type="checkbox" id="tracer-toggle" />
-      <label id="tracer-toggle-label" for="tracer-toggle">Tracer</label>
+
+    <button id="clickZone" class="bigbutton" style="min-width:260px">CLICK AREA</button>
+
+    <div style="width:100%; overflow:auto; max-height:260px">
+      <table aria-label="leaderboard">
+        <thead><tr><th>#</th><th>Name</th><th>Score</th></tr></thead>
+        <tbody id="leaderboard"></tbody>
+      </table>
     </div>
-    <div>
-      <button id="clear-board-button">Clear</button>
-    </div>
+
+    <div class="foot">Leaderboard updates globally via Gun.js — only strictly higher scores overwrite an existing entry.</div>
   </div>
+</div>
 
-  <!-- Modal Container for Overlays -->
-  <div id="modal-container">
-    <div class="modal-content" id="modal-content">
-      <button class="modal-close" onclick="closeModal()">Close</button>
-      <div id="modal-inner-content"></div>
-    </div>
-  </div>
+<script>
+/* ============================================
+   0) USER-SUPPLIED ASCII ART (used verbatim)
+   ============================================ */
+const userArt = `░█████╗░██╗░░██╗███████╗░█████╗░████████╗  ░█████╗░██╗░░░░░██╗░█████╗░██╗░░██╗███████╗██████╗░
+██╔══██╗██║░░██║██╔════╝██╔══██╗╚══██╔══╝  ██╔══██╗██║░░░░░██║██╔══██╗██║░██╔╝██╔════╝██╔══██╗
+██║░░╚═╝███████║█████╗░░███████║░░░██║░░░  ██║░░╚═╝██║░░░░░██║██║░░╚═╝█████═╝░█████╗░░██████╔╝
+██║░░██╗██╔══██║██╔══╝░░██╔══██║░░░██║░░░  ██║░░██╗██║░░░░░██║██║░░██╗██╔═██╗░██╔══╝░░██╔══██╗
+╚█████╔╝██║░░██║███████╗██║░░██║░░░██║░░░  ╚█████╔╝███████╗██║╚█████╔╝██║░╚██╗███████╗██║░░██║
+░╚════╝░╚═╝░░╚═╝╚══════╝╚═╝░░╚═╝░░░╚═╝░░░  ░╚════╝░╚══════╝╚═╝░╚════╝░╚═╝░░╚═╝╚══════╝╚═╝░░╚═╝`;
 
-  <script>
-    /***********************
-     * Global Variables
-     ***********************/
-    // Message and drawing subscription handles
-    let currentMessageSubscription = null;
-    let currentDrawingSubscription = null;
+/* ============================================
+   1) ASCII TITLE SOFT-BODY
+   ============================================ */
+const asciiDiv = document.getElementById('asciiTitle');
+const chars = [];
+userArt.split("\n").forEach(line=>{
+  const row = document.createElement('div');
+  [...line].forEach(ch=>{
+    const sp = document.createElement('span');
+    sp.textContent = ch === ' ' ? '\u00A0' : ch;
+    // physics state
+    sp._ox = 0; sp._oy = 0; sp._x = 0; sp._y = 0; sp._vx = 0; sp._vy = 0;
+    sp.style.willChange = 'transform, color';
+    row.appendChild(sp);
+    chars.push(sp);
+  });
+  asciiDiv.appendChild(row);
+});
 
-    // Chat state & banned flag
-    let publicChatConfirm = false;
-    let isBanned = false;
-    let bannedUsers = {}; // Local record of banned usernames
+/* set original positions after layout */
+function refreshCharOrigins(){
+  for(const sp of chars){
+    const r = sp.getBoundingClientRect();
+    sp._ox = r.left + r.width/2;
+    sp._oy = r.top + r.height/2;
+    sp._x = 0; sp._y = 0; sp._vx = 0; sp._vy = 0;
+  }
+}
+setTimeout(refreshCharOrigins, 60);
+addEventListener('resize', ()=> setTimeout(refreshCharOrigins, 120));
 
-    /***********************
-     * Custom Array of Bad Words
-     ***********************/
-    const bannedWords = [
-      "ass", "asshole", "bastard", "bitch", "crap", "damn", "dick", "dumb",
-      "fuck", "fucking", "fucker", "motherfucker", "shit", "shitty", "slut",
-      "whore", "piss", "cock", "nigger", "nigga", "cunt", "retard", "fag",
-      "faggot", "penis", "vagina", "boobs", "balls", "jerk", "suck", "wtf",
-      "gay", "lesbian", "homo", "rape", "rapist", "kill", "die", "suicide"
-    ];
+let mouseX = -9999, mouseY = -9999;
+document.addEventListener('mousemove', (e)=>{ mouseX = e.clientX; mouseY = e.clientY; });
 
-    /***********************
-     * Custom Profanity Check Function
-     ***********************/
-    function containsBadWord(text) {
-      const lower = text.toLowerCase();
-      return bannedWords.some(word => lower.includes(word));
+const LOG_DAMP = 0.86;
+const LOG_STIFF = 0.14;
+const LOG_RADIUS = 90;
+
+function animateLogo(){
+  for(const sp of chars){
+    if(!sp._ox) continue;
+    const dx = sp._ox - mouseX;
+    const dy = sp._oy - mouseY;
+    const dist = Math.hypot(dx,dy) || 0.0001;
+    if(dist < LOG_RADIUS){
+      const f = (LOG_RADIUS - dist) / LOG_RADIUS;
+      const nx = dx/dist, ny = dy/dist;
+      sp._vx += nx * f * 2.0;
+      sp._vy += ny * f * 2.0;
     }
+    // spring to center
+    sp._vx += (-sp._x) * LOG_STIFF;
+    sp._vy += (-sp._y) * LOG_STIFF;
+    sp._vx *= LOG_DAMP; sp._vy *= LOG_DAMP;
+    sp._x += sp._vx; sp._y += sp._vy;
 
-    /***********************
-     * Modal Functions
-     ***********************/
-    function showModal(contentHTML) {
-      const modalContainer = document.getElementById('modal-container');
-      const modalInner = document.getElementById('modal-inner-content');
-      modalInner.innerHTML = contentHTML;
-      modalContainer.style.display = 'flex';
+    const disp = Math.hypot(sp._x, sp._y);
+    const scale = 1 + Math.min(0.45, disp/60);
+    // hue based on displacement (cool -> warmer)
+    const hue = 190 - Math.min(80, Math.floor(disp * 2.5));
+    sp.style.transform = `translate(${sp._x}px, ${sp._y}px) scale(${scale})`;
+    sp.style.color = `hsl(${hue} 85% 78%)`;
+    sp.style.textShadow = disp>2 ? `0 6px 18px rgba(20,240,230,0.06)` : 'none';
+  }
+  requestAnimationFrame(animateLogo);
+}
+requestAnimationFrame(animateLogo);
+
+/* ============================================
+   2) SHUTTLE / FLUID BACKGROUND
+   ============================================ */
+const fluid = document.getElementById('fluidCanvas');
+const fctx = fluid.getContext('2d');
+const gridCanvas = document.getElementById('gridCanvas');
+const gctx = gridCanvas.getContext('2d');
+const clickCanvas = document.getElementById('clickCanvas');
+const cctx = clickCanvas.getContext('2d');
+
+function resizeCanvases(){
+  fluid.width = gridCanvas.width = clickCanvas.width = innerWidth;
+  fluid.height = gridCanvas.height = clickCanvas.height = innerHeight;
+}
+addEventListener('resize', resizeCanvases);
+resizeCanvases();
+
+/* Flow field sampler (smooth layered sinusoids) */
+let ttime = 0;
+function sampleField(x,y,t){
+  const s = 0.0011;
+  const a = Math.sin((x + t*110) * s) + Math.cos((y - t*64) * s * 1.1);
+  const b = Math.sin((x*0.7 - t*54) * s * 1.3) - Math.cos((y*1.2 + t*33) * s);
+  const angle = (a + b) * Math.PI;
+  return { vx: Math.cos(angle), vy: Math.sin(angle) };
+}
+
+/* shuttle-like particles */
+const N = Math.max(220, Math.floor((innerWidth*innerHeight)/7000));
+const particles = [];
+for(let i=0;i<N;i++){
+  particles.push({
+    x: Math.random()*innerWidth,
+    y: Math.random()*innerHeight,
+    vx: 0, vy: 0,
+    life: 120 + Math.random()*180,
+    size: 0.6 + Math.random()*1.6
+  });
+}
+
+let mouseInfluence = {x:-9999,y:-9999};
+document.addEventListener('mousemove', e=>{ mouseInfluence.x = e.clientX; mouseInfluence.y = e.clientY; });
+document.addEventListener('mouseleave', ()=>{ mouseInfluence.x = -9999; mouseInfluence.y = -9999; });
+
+function drawFluid(){
+  ttime += 1;
+  fctx.clearRect(0,0,fluid.width,fluid.height);
+
+  // subtle overlay gradient
+  const g = fctx.createLinearGradient(0,0,innerWidth,innerHeight);
+  g.addColorStop(0, 'rgba(4,6,8,0.78)');
+  g.addColorStop(1, 'rgba(8,10,14,0.78)');
+  fctx.fillStyle = g;
+  fctx.fillRect(0,0,fluid.width,fluid.height);
+
+  for(const p of particles){
+    const v = sampleField(p.x, p.y, ttime*0.013);
+    p.vx += v.vx * 0.16;
+    p.vy += v.vy * 0.16;
+    // mouse soft repulse
+    const dx = p.x - mouseInfluence.x;
+    const dy = p.y - mouseInfluence.y;
+    const d = Math.hypot(dx,dy);
+    if(d < 160){
+      const f = (160 - d) / 160;
+      p.vx += (dx/d || 0.001) * f * 0.6;
+      p.vy += (dy/d || 0.001) * f * 0.6;
     }
-    function closeModal() {
-      document.getElementById('modal-container').style.display = 'none';
+    p.vx *= 0.96; p.vy *= 0.96;
+    p.x += p.vx; p.y += p.vy;
+
+    // wrap
+    if(p.x < -20) p.x = innerWidth + 20;
+    if(p.x > innerWidth + 20) p.x = -20;
+    if(p.y < -20) p.y = innerHeight + 20;
+    if(p.y > innerHeight + 20) p.y = -20;
+
+    // draw elongated shuttle streak
+    const grad = fctx.createLinearGradient(p.x - p.vx*6, p.y - p.vy*6, p.x + p.vx*2, p.y + p.vy*2);
+    grad.addColorStop(0, 'rgba(20,240,230,0.04)');
+    grad.addColorStop(1, 'rgba(255,79,167,0.14)');
+    fctx.fillStyle = grad;
+    fctx.beginPath();
+    fctx.ellipse(p.x, p.y, p.size*6, p.size*2.6, Math.atan2(p.vy,p.vx), 0, Math.PI*2);
+    fctx.fill();
+
+    // bright center
+    fctx.fillStyle = 'rgba(20,240,230,0.45)';
+    fctx.fillRect(p.x - 0.65, p.y - 0.65, 1.5, 1.5);
+  }
+  requestAnimationFrame(drawFluid);
+}
+requestAnimationFrame(drawFluid);
+
+/* ============================================
+   3) SUBTLE GRID (interactive like title)
+   ============================================ */
+const gridPoints = [];
+let gridSpacing = 40;
+function buildGrid(){
+  gridPoints.length = 0;
+  const cols = Math.ceil(innerWidth / gridSpacing);
+  const rows = Math.ceil(innerHeight / gridSpacing);
+  for(let y=0; y<rows; y++){
+    for(let x=0; x<cols; x++){
+      const gx = Math.round((x+0.5) * gridSpacing);
+      const gy = Math.round((y+0.5) * gridSpacing);
+      gridPoints.push({ ox: gx, oy: gy, x: gx, y: gy, vx:0, vy:0 });
     }
+  }
+}
+buildGrid();
+addEventListener('resize', ()=> { gridSpacing = Math.max(28, Math.round(Math.min(48, innerWidth/25))); buildGrid(); });
 
-    /***********************
-     * Embarrassing Notes (unchanged)
-     ***********************/
-    const embarrassingNotes = [
-      "I sleep with the lights on.",
-      "I dance in my pajamas when no one’s watching.",
-      "I still watch cartoons on Saturday mornings.",
-      "I talk to my pet goldfish about my feelings.",
-      "I pretend I’m in a music video when I shower.",
-      "I accidentally text my boss memes.",
-      "I sing out loud in public and hope no one notices.",
-      "I wear mismatched socks because I’m too lazy.",
-      "I trip over my own feet—literally.",
-      "I practice my acceptance speech in front of the mirror.",
-      "I once wore my shirt inside out all day.",
-      "I use cheesy pickup lines on myself.",
-      "I still believe my childhood stuffed animal understands me.",
-      "I binge-watch reality TV and pretend it’s educational.",
-      "I awkwardly laugh at my own jokes.",
-      "I chat with inanimate objects when bored.",
-      "I have full conversations with my shadow.",
-      "I try to high-five strangers and often miss.",
-      "I once tripped in front of a crowd and waved like it was planned.",
-      "I secretly practice dance moves in the mirror.",
-      "I waved back at someone who wasn’t waving at me.",
-      "I sing the wrong lyrics with unshakable confidence.",
-      "I mispronounce words and laugh it off.",
-      "I sometimes forget why I walked into a room.",
-      "I pretend my life is a movie, complete with a quirky soundtrack."
-    ];
+document.addEventListener('mousemove', (e)=>{
+  for(const p of gridPoints){
+    const dx = p.ox - e.clientX;
+    const dy = p.oy - e.clientY;
+    const dist = Math.hypot(dx,dy) || 0.0001;
+    if(dist < 120){
+      const f = (120 - dist) / 120;
+      p.vx += (dx/dist) * f * 3.0;
+      p.vy += (dy/dist) * f * 3.0;
+    }
+  }
+});
 
-    /***********************
-     * Public Chat Key & Gun.js Initialization
-     ***********************/
-    let now = new Date();
-    let dayKey = now.getFullYear() + "-" + (now.getMonth()+1) + "-" + (now.getDate() % 2);
-    let publicRoomKey = "public-chat-" + dayKey;
+function drawGrid(){
+  gctx.clearRect(0,0,gridCanvas.width, gridCanvas.height);
+  // subtle connecting lines (faint)
+  gctx.lineWidth = 1;
+  for(const p of gridPoints){
+    // physics: spring to origin + damping
+    const sx = p.ox - p.x;
+    const sy = p.oy - p.y;
+    p.vx += sx * 0.08;
+    p.vy += sy * 0.08;
+    p.vx *= 0.88; p.vy *= 0.88;
+    p.x += p.vx; p.y += p.vy;
+    // color shift based on displacement
+    const disp = Math.hypot(p.x - p.ox, p.y - p.oy);
+    const alpha = Math.min(0.24, 0.02 + disp/160);
+    const hue = 190 - Math.min(80, Math.floor(disp*3));
+    gctx.fillStyle = `hsla(${hue},85%,75%, ${0.14 + alpha})`;
+    gctx.beginPath();
+    gctx.arc(p.x, p.y, 1.35 + Math.min(2.0, disp/18), 0, Math.PI*2);
+    gctx.fill();
+  }
 
-    const gun = Gun({
-      peers: ['https://gun-manhattan.herokuapp.com/gun'],
-      localStorage: false
+  // optional subtle grid lines: connect nearby points faintly (very subtle)
+  gctx.strokeStyle = 'rgba(20,240,230,0.02)';
+  for(let i=0;i<gridPoints.length;i++){
+    const p = gridPoints[i];
+    gctx.beginPath();
+    gctx.rect(p.ox-0.5, p.oy-0.5, 1, 1);
+    gctx.stroke();
+  }
+
+  requestAnimationFrame(drawGrid);
+}
+requestAnimationFrame(drawGrid);
+
+/* ============================================
+   4) CLICK PARTICLES - used for ALL clicks
+   ============================================ */
+const clicks = [];
+function spawnClick(x,y){
+  for(let i=0;i<18;i++){
+    clicks.push({
+      x,y,
+      vx:(Math.random()-0.5)*6,
+      vy:(Math.random()-0.9)*6,
+      life:50 + Math.random()*40,
+      col: Math.random()*360
     });
+  }
+}
 
-    // Default username
-    let username = "Guest " + Math.floor(1000 + Math.random() * 9000);
-    let currentRoom = "";
-    let userColor = "white";
-    const rooms = {};
-    const chatBox = document.getElementById('chat-box');
-    const userList = document.getElementById('user-list');
-    const typingIndicator = document.getElementById('typing-indicator');
-    let usersInRoom = {};
+function drawClicks(){
+  cctx.clearRect(0,0,clickCanvas.width, clickCanvas.height);
+  for(let i=clicks.length-1;i>=0;i--){
+    const p = clicks[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.life--;
+    cctx.globalAlpha = Math.max(0, p.life/90);
+    cctx.fillStyle = `hsl(${p.col} 95% 60%)`;
+    cctx.fillRect(p.x, p.y, 3, 3);
+    if(p.life <= 0) clicks.splice(i,1);
+  }
+  requestAnimationFrame(drawClicks);
+}
+requestAnimationFrame(drawClicks);
 
-    /***********************
-     * Drawing Board Variables & Persistence
-     ***********************/
-    let drawingCanvas = null;
-    let drawingContext = null;
-    let drawing = false;
-    let lastX = 0;
-    let lastY = 0;
-    let penColor = "#000000";
-    let penThickness = 2;
-    let drawData;
-    // For remote drawing positions & tracers
-    const remotePositions = {};
-    const remoteTimestamps = {};
-    const remoteTracers = {};
-    let tracerEnabled = false;
-    let lastTracerTime = 0;
-    let localTracer = { x: 0, y: 0, timestamp: 0, color: penColor };
-    let tracerOverlay = null;
-    let tracerCtx = null;
+/* make every click on the page spawn sparks */
+document.addEventListener('click', function(e){
+  // spawn sparks at click location for visual feedback everywhere
+  spawnClick(e.clientX, e.clientY);
+});
 
-    /***********************
-     * Global Jokes Array for /joke Command
-     ***********************/
-    const jokes = [
-      "Why don’t scientists trust atoms? Because they make up everything!",
-      "I told my computer I needed a break, and it said 'No problem – I’ll go to sleep.'",
-      "Why did the programmer quit his job? Because he didn't get arrays."
-    ];
+/* ============================================
+   5) GAME + GUN LEADERBOARD (protected)
+   ============================================ */
+const gun = Gun();
+const lb = gun.get('cheat:shuttle:grid:leaderboard');
 
-    /***********************
-     * Functions for Ban & Disabling Chat
-     ***********************/
-    // When a banned user triggers a bad word, we now set a property "bannedUser" on the message.
-    // In displayMessage(), we check for bannedUser and show "You got banned." for that user only.
-    function disableChatForBannedUser() {
-      const msgInput = document.getElementById('message-input');
-      msgInput.value = "You got banned";
-      msgInput.disabled = true;
-      if (!document.getElementById("banned-message")) {
-        const bannedMsg = document.createElement('div');
-        bannedMsg.id = "banned-message";
-        bannedMsg.innerHTML = `<strong style="color:red;">You got banned.</strong>`;
-        chatBox.appendChild(bannedMsg);
-      }
-    }
-    gun.get("banned-users").map().once(data => {
-      if (data && data.username === username.toLowerCase()) {
-        isBanned = true;
-        showModal(`<h2>You have been banned</h2><p>You cannot use the chat anymore.</p>`);
-      }
-    });
+let gameScore = 0;
+let gameTime = 5;
+let timerRef = null;
+let isPlaying = false;
 
-    /***********************
-     * Tabs UI
-     ***********************/
-    function updateTabs() {
-      const tabs = document.getElementById('tabs');
-      let tabsHTML = `<div class="tab ${currentRoom.startsWith("public-chat") ? "active" : ""}" onclick="handlePublicChatClick()">Public Chat</div>`;
-      Object.keys(rooms).forEach(room => {
-        if (!room.startsWith("public-chat") && room !== "ban-room") {
-          let tabLabel = "";
-          if (room.startsWith("private-")) {
-            tabLabel = "Private Chat " + room.slice(8);
-          } else if (room === "draw-room") {
-            tabLabel = "Drawing Board" + (currentRoom === "draw-room" ? " (Active)" : "");
-          } else if (room === "help-room") {
-            tabLabel = "Help" + (currentRoom === "help-room" ? " (Active)" : "");
-          } else {
-            tabLabel = room;
-          }
-          tabsHTML += `<div class="tab ${room === currentRoom ? "active" : ""}" onclick="switchRoom('${room}')">${tabLabel} <span class="close-tab" onclick="closeRoom(event, '${room}')">X</span></div>`;
-        }
-      });
-      if (rooms["ban-room"]) {
-        tabsHTML += `<div class="tab ${currentRoom === "ban-room" ? "active" : ""}" onclick="switchRoom('ban-room')">Ban</div>`;
-      }
-      tabs.innerHTML = tabsHTML;
-    }
-    function closeRoom(event, room) {
-      event.stopPropagation();
-      delete rooms[room];
-      if (currentRoom === room) { switchRoom("public-chat"); }
-      updateTabs();
-    }
-    function handlePublicChatClick() {
-      if (!publicChatConfirm) {
-        publicChatConfirm = true;
-        alert("For security, please click Public Chat again to join.");
-      } else {
-        publicChatConfirm = false;
-        switchRoom("public-chat");
-      }
-    }
+const nameInput = document.getElementById('name');
+const startBtn = document.getElementById('startBtn');
+const clickZone = document.getElementById('clickZone');
+const timerEl = document.getElementById('timer');
+const scoreEl = document.getElementById('score');
+const leaderboardEl = document.getElementById('leaderboard');
 
-    /***********************
-     * Room Switching (Persistent Drawing Board)
-     ***********************/
-    function switchRoom(room) {
-      const oldRoom = currentRoom;
-      if (room === "public-chat") { room = publicRoomKey; }
-      currentRoom = room;
-      
-      // If switching away from the drawing board, remove the canvas without discarding its data.
-      if (oldRoom === "draw-room" && drawingCanvas) {
-        if (drawingCanvas.parentElement === chatBox) {
-          chatBox.removeChild(drawingCanvas);
-        }
-      } else {
-        chatBox.innerHTML = "";
-      }
-      userList.innerHTML = "";
+startBtn.addEventListener('click', ()=> startGame());
+clickZone.addEventListener('click', (e)=>{
+  // clicking the clickZone increments score only while playing
+  if(!isPlaying) return;
+  gameScore++;
+  scoreEl.textContent = String(gameScore);
+  // DO NOT spawn here — global click listener handles sparks for everything
+});
 
-      document.getElementById('message-input').style.display =
-        (room === "draw-room" || room === "ban-room") ? "none" : "block";
+// keyboard support for space/enter to click while playing
+document.addEventListener('keydown', e=>{
+  if((e.key === ' ' || e.key === 'Enter') && isPlaying){
+    e.preventDefault();
+    gameScore++; scoreEl.textContent = String(gameScore);
+    // spawn center sparks for keyboard presses
+    spawnClick(innerWidth/2, innerHeight/2);
+  }
+});
 
-      if (room === "draw-room") {
-        if (drawingCanvas) {
-          chatBox.appendChild(drawingCanvas);
-        } else {
-          drawingCanvas = document.createElement('canvas');
-          drawingCanvas.id = "drawing-board-canvas";
-          drawingCanvas.style.border = "1px solid #444";
-          drawingCanvas.style.background = "#fff";
-          drawingCanvas.style.borderRadius = "5px";
-          chatBox.appendChild(drawingCanvas);
-          resizeCanvas();
-          initDrawingBoard(drawingCanvas);
-        }
-        drawData = gun.get('draw-room-draw-data');
-        loadDrawing();
-      }
-      else if (room === "help-room") {
-        showHelpContent();
-      }
-      else if (room === "ban-room") {
-        chatBox.innerHTML = `
-          <h2>Ban a User</h2>
-          <input type="text" id="ban-username-input" placeholder="Enter username to ban" />
-          <button onclick="handleBanUser()">Ban</button>
-          <p style="font-size:12px; color:#bbb;">(This tab is hidden from the /help command.)</p>
-        `;
-      } else {
-        loadMessages(room);
-      }
-      loadUsers(room);
-      updateTabs();
-      if (room.startsWith("public-chat")) { closeModal(); }
-    }
+function sanitizeName(s){
+  if(!s) return null;
+  s = s.toString().replace(/[^\w\- ]/g, '').trim();
+  if(s.length === 0) return null;
+  return s.slice(0,15);
+}
 
-    /***********************
-     * Message Loading & Display
-     ***********************/
-    function loadMessages(room) {
-      if (!rooms[room]) { rooms[room] = gun.get(room); }
-      if (currentMessageSubscription && currentMessageSubscription.off) {
-        currentMessageSubscription.off();
-      }
-      currentMessageSubscription = rooms[room].map().on(data => {
-        if (room !== currentRoom) return;
-        if (data && new Date(data.timestamp).toDateString() === new Date().toDateString()) {
-          if (!document.getElementById(`msg-${data.timestamp}`)) {
-            displayMessage(data);
-          }
-        }
-      });
+function startGame(){
+  const nm = sanitizeName(nameInput.value);
+  if(!nm){ alert('Enter a simple name (letters / numbers / - _).'); return; }
+  gameScore = 0; gameTime = 5;
+  isPlaying = true;
+  scoreEl.textContent = "0"; timerEl.textContent = String(gameTime);
+  startBtn.textContent = "PLAYING..."; startBtn.disabled = true;
+  clearInterval(timerRef);
+  timerRef = setInterval(()=>{
+    gameTime--;
+    timerEl.textContent = String(gameTime);
+    if(gameTime <= 0){
+      clearInterval(timerRef);
+      isPlaying = false;
+      startBtn.disabled = false;
+      startBtn.textContent = "START GAME";
+      submitScore(nm, gameScore);
     }
-    function displayMessage(data) {
-      const messageElement = document.createElement('div');
-      messageElement.id = `msg-${data.timestamp}`;
-      const timestamp = new Date(data.timestamp).toLocaleTimeString();
-      
-      // If the message is a ban message (set via a bad word)
-      if (data.bannedUser) {
-        let displayText;
-        // If the current client is the banned user, show "You got banned."
-        if (username.toLowerCase() === data.bannedUser.toLowerCase()) {
-          displayText = "You got banned.";
-        } else {
-          displayText = data.bannedUser + " has been banned for bad word usage.";
-        }
-        messageElement.innerHTML = `<strong style="color:red;">Server:</strong> ${displayText} <span style="font-size:10px;color:#bbb;">${timestamp}</span>`;
-        chatBox.appendChild(messageElement);
-        chatBox.scrollTop = chatBox.scrollHeight;
-        return;
-      }
-      
-      // Regular messages.
-      let displayUser = bannedUsers[data.user] ? "banned" : data.user;
-      messageElement.innerHTML = `<strong style="color:${data.color || 'white'}">${displayUser}:</strong> ${data.text} <span style="font-size:10px;color:#bbb;">${timestamp}</span>`;
-      chatBox.appendChild(messageElement);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-    function loadUsers(room) {
-      const users = gun.get(`${room}-users`);
-      users.map().once(user => {
-        if (user) {
-          usersInRoom[user.username] = user;
-          updateUserList();
-        }
-      });
-    }
-    function updateUserList() {
-      userList.innerHTML = `<h3>Users in Room:</h3>`;
-      Object.keys(usersInRoom).forEach(user => {
-        userList.innerHTML += `<div>${user}</div>`;
-      });
-    }
+  }, 1000);
+}
 
-    /***********************
-     * Drawing Board Loading (Persistence Enabled)
-     ***********************/
-    function loadDrawing() {
-      if (currentDrawingSubscription && currentDrawingSubscription.off) {
-        currentDrawingSubscription.off();
-      }
-      currentDrawingSubscription = drawData.map().on(handleRemoteDrawing);
-      drawData.map().once((data, key) => {
-        if (data && drawingContext) {
-          handleRemoteDrawing(data, key);
-        }
-      });
+function submitScore(name, score){
+  const s = Math.floor(Number(score));
+  if(!Number.isFinite(s) || s < 0 || s > 10_000_000) return;
+  lb.get(name).once(prev=>{
+    if(!prev || typeof prev.score !== 'number' || s > prev.score){
+      lb.get(name).put({ name, score: s, t: Date.now() });
+    } else {
+      console.log('Attempted lower score — ignored');
     }
+  });
+}
 
-    /***********************
-     * Message Input and Command Handling (with Additional Fun Commands)
-     ***********************/
-    const messageInput = document.getElementById('message-input');
-    const startTime = Date.now();
-    messageInput.addEventListener('keypress', function (e) {
-      if (e.key === 'Enter') {
-        let msg = this.value.trim();
-        if (!msg) return;
-        if (msg.length > 250) {
-          alert("Message too long (max 250 characters). Message not sent.");
-          this.value = "";
-          return;
-        }
-        let now = Date.now();
+/* live leaderboard listening & render with sanitation */
+const scores = {};
+lb.map().on(data=>{
+  if(!data) return;
+  if(!data.name || typeof data.score !== 'number') return;
+  const safeName = data.name.toString().slice(0,15).replace(/[^\w\- ]/g,'');
+  scores[safeName] = data.score;
+  renderLeaderboard();
+});
 
-        // If bad word detected, mark as banned.
-        if (!isBanned && containsBadWord(msg)) {
-          isBanned = true;
-          // Instead of sending the same text to everyone, we set a property so that in displayMessage
-          // the banned user sees "You got banned." and everyone else sees "[username] has been banned for bad word usage."
-          rooms[currentRoom].set({
-            user: "Server",
-            bannedUser: username,
-            timestamp: now,
-            color: "red"
-          });
-          disableChatForBannedUser();
-          this.value = "";
-          return;
-        }
-        if (isBanned) {
-          chatBox.innerHTML = "<h2 style='color:red;'>You have been banned from the chat.</h2>";
-          return;
-        }
+function renderLeaderboard(){
+  const rows = Object.entries(scores).sort((a,b)=> b[1]-a[1]).slice(0,15);
+  leaderboardEl.innerHTML = rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r[0])}</td><td>${r[1]}</td></tr>`).join('');
+}
+function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
 
-        // ----------------- Command Handling -----------------
-        if (msg === '/help') {
-          if (!rooms["help-room"]) { rooms["help-room"] = gun.get("help-room"); }
-          switchRoom("help-room");
-        }
-        else if (msg === '/people') {
-          let people = Object.keys(usersInRoom);
-          rooms[currentRoom].set({ user: "Server", text: "Active users: " + people.join(", "), timestamp: now, color: "gray" });
-        }
-        else if (msg.startsWith('/name ')) {
-          let newName = msg.substring(6).trim();
-          if (newName.length > 25) {
-            alert("Name too long (max 25 characters). Name changed to default.");
-            newName = "NameTooLong";
-          }
-          if (containsBadWord(newName)) {
-            alert("Bad word detected in name. You are banned.");
-            isBanned = true;
-            newName = "banned";
-            disableChatForBannedUser();
-          }
-          username = newName;
-          rooms[currentRoom].set({ user: "Server", text: `${username} set their name.`, timestamp: now, color: "gray" });
-        }
-        else if (msg.startsWith('/room')) {
-          let roomCode = msg.substring(5).trim();
-          if (roomCode.length === 4 && !isNaN(roomCode)) {
-            let roomName = `private-${roomCode}`;
-            rooms[roomName] = gun.get(roomName);
-            switchRoom(roomName);
-          }
-        }
-        else if (msg.startsWith('/color ')) {
-          userColor = msg.substring(7).trim();
-        }
-        else if (msg === '/draw') {
-          if (!rooms["draw-room"]) { rooms["draw-room"] = gun.get("draw-room"); }
-          switchRoom("draw-room");
-        }
-        else if (msg === '/bluetxt') {
-          userColor = "blue";
-        }
-        else if (msg === '/clearchat') {
-          chatBox.innerHTML = "";
-          rooms[currentRoom].set({ user: "Server", text: "Chat was cleared.", timestamp: now, color: "gray" });
-        }
-        else if (msg === '/traceron') {
-          tracerEnabled = true;
-          document.getElementById('tracer-toggle').checked = true;
-        }
-        else if (msg === '/traceroff') {
-          tracerEnabled = false;
-          document.getElementById('tracer-toggle').checked = false;
-        }
-        // Existing fun commands.
-        else if (msg === '/shrug') {
-          rooms[currentRoom].set({ user: username, text: '¯\\_(ツ)_/¯', timestamp: now, color: userColor });
-        }
-        else if (msg === '/flip') {
-          rooms[currentRoom].set({ user: username, text: '(╯°□°）╯︵ ┻━┻', timestamp: now, color: userColor });
-        }
-        else if (msg === '/unflip') {
-          rooms[currentRoom].set({ user: username, text: '┬─┬ ノ( ゜-゜ノ)', timestamp: now, color: userColor });
-        }
-        else if (msg === '/afk') {
-          rooms[currentRoom].set({ user: "Server", text: username + " is now AFK.", timestamp: now, color: "gray" });
-        }
-        else if (msg.startsWith('/ping ')) {
-          let targetName = msg.substring(6).trim();
-          rooms[currentRoom].set({ user: "Server", text: username + " pinged " + targetName + "! 🔔", timestamp: now, color: "gray" });
-        }
-        else if (msg === '/roll') {
-          let roll = Math.floor(Math.random() * 100) + 1;
-          rooms[currentRoom].set({ user: "Server", text: username + " rolled a " + roll + "! 🎲", timestamp: now, color: "gray" });
-        }
-        else if (msg === '/rainbowtxt') {
-          rooms[currentRoom].set({ user: username, text: '🌈 ' + username + "'s message is now in rainbow!", timestamp: now, color: userColor });
-        }
-        else if (msg === '/wave') {
-          rooms[currentRoom].set({ user: "Server", text: username + " waves to everyone. 👋", timestamp: now, color: "gray" });
-        }
-        else if (msg.startsWith('/status ')) {
-          let statusMessage = msg.substring(8).trim();
-          rooms[currentRoom].set({ user: "Server", text: username + " set status: " + statusMessage, timestamp: now, color: "gray" });
-        }
-        else if (msg.startsWith('/dicefight ')) {
-          let target = msg.substring(11).trim();
-          let roll1 = Math.floor(Math.random() * 6) + 1;
-          let roll2 = Math.floor(Math.random() * 6) + 1;
-          let result;
-          if (roll1 > roll2) {
-            result = username + " wins the dice fight against " + target + " (" + roll1 + " vs " + roll2 + ")!";
-          } else if (roll2 > roll1) {
-            result = target + " wins the dice fight against " + username + " (" + roll2 + " vs " + roll1 + ")!";
-          } else {
-            result = "It's a tie in the dice fight between " + username + " and " + target + " (" + roll1 + " each)!";
-          }
-          rooms[currentRoom].set({ user: "Server", text: result, timestamp: now, color: "gray" });
-        }
-        else if (msg === '/uptime') {
-          let uptime = Math.floor((Date.now() - startTime) / 1000);
-          rooms[currentRoom].set({ user: "Server", text: "Uptime: " + uptime + " seconds.", timestamp: now, color: "gray" });
-        }
-        else if (msg === '/roominfo') {
-          let info = "Room Info: " + Object.keys(usersInRoom).length + " users online. Server resets every 2 days.";
-          rooms[currentRoom].set({ user: "Server", text: info, timestamp: now, color: "gray" });
-        }
-        else if (msg === '/motd') {
-          let motd = "Welcome to Gun.js Chat! Have fun, be kind, and enjoy the drawing board.";
-          rooms[currentRoom].set({ user: "Server", text: motd, timestamp: now, color: "gray" });
-        }
-        // Hidden Ban command.
-        else if (msg.startsWith('/ban')) {
-          if (msg === '/ban') {
-            if (!rooms["ban-room"]) { rooms["ban-room"] = gun.get("ban-room"); }
-            switchRoom("ban-room");
-          }
-          else {
-            let bannedUsername = msg.substring(5).trim();
-            bannedUsers[bannedUsername.toLowerCase()] = true;
-            rooms[currentRoom].set({ user: "Server", text: `${bannedUsername} has been banned by ${username}.`, timestamp: now, color: "red" });
-            gun.get("banned-users").set({ username: bannedUsername.toLowerCase(), timestamp: now });
-            if (username.toLowerCase() === bannedUsername.toLowerCase()) {
-              isBanned = true;
-              disableChatForBannedUser();
-            }
-          }
-        }
-        // New fun commands.
-        else if (msg === '/dance') {
-          rooms[currentRoom].set({ user: "Server", text: username + " starts dancing 💃🕺!", timestamp: now, color: "gray" });
-        }
-        else if (msg === '/joke') {
-          let joke = jokes[Math.floor(Math.random() * jokes.length)];
-          rooms[currentRoom].set({ user: "Server", text: joke, timestamp: now, color: "gray" });
-        }
-        else if (msg === '/sing') {
-          rooms[currentRoom].set({ user: "Server", text: username + " sings a cheerful tune 🎶!", timestamp: now, color: "gray" });
-        }
-        else {
-          // Regular message
-          rooms[currentRoom].set({ user: username, text: msg, timestamp: now, color: userColor });
-        }
-        this.value = "";
-      }
-    });
-
-    /***********************
-     * Ban Room Functionality
-     ***********************/
-    function handleBanUser() {
-      const input = document.getElementById('ban-username-input');
-      const targetUser = input.value.trim();
-      if (targetUser) {
-        bannedUsers[targetUser.toLowerCase()] = true;
-        let now = Date.now();
-        rooms[currentRoom].set({ user: "Server", text: `${targetUser} has been banned by ${username}.`, timestamp: now, color: "red" });
-        gun.get("banned-users").set({ username: targetUser.toLowerCase(), timestamp: now });
-        input.value = "";
-      } else {
-        alert("Please enter a username to ban.");
-      }
-    }
-
-    /***********************
-     * Help Content for /help Tab
-     ***********************/
-    function showHelpContent() {
-      const helpHTML = `
-        <h2>List of Commands</h2>
-        <h3>Core Commands</h3>
-        <p>/name [yourname] - Set your name (max 25 chars)</p>
-        <p>/roomXXXX - Join a private room (e.g., /room1234)</p>
-        <p>/color [color] - Change text color</p>
-        <p>/draw - Open online drawing board</p>
-        <p>/bluetxt - Set chat text to blue</p>
-        <p>/people - List actively online users</p>
-        <p>/clearchat - Clear the chat</p>
-        <p>/traceron - Enable tracer</p>
-        <p>/traceroff - Disable tracer</p>
-        <hr/>
-        <h3>Additional Fun Commands</h3>
-        <p>/shrug - Sends ¯\\_(ツ)_/¯</p>
-        <p>/flip - Sends a table flip (╯°□°）╯︵ ┻━┻</p>
-        <p>/unflip - Sends table unflip ┬─┬ ノ( ゜-゜ノ)</p>
-        <p>/afk - Broadcasts that you are AFK</p>
-        <p>/ping [name] - Pings another user</p>
-        <p>/roll - Rolls a random number between 1 and 100</p>
-        <p>/rainbowtxt - Makes your next message rainbow</p>
-        <p>/wave - Broadcasts a wave</p>
-        <p>/status [message] - Sets your custom status</p>
-        <p>/dicefight [name] - Initiate a dice fight with another user</p>
-        <p>/uptime - Shows server uptime</p>
-        <p>/roominfo - Displays room information</p>
-        <p>/motd - Shows the message of the day</p>
-        <hr/>
-        <h3>New Fun Commands</h3>
-        <p>/dance - Announce that you're dancing</p>
-        <p>/joke - Tells a random joke</p>
-        <p>/sing - Announce that you're singing</p>`;
-      chatBox.innerHTML = helpHTML;
-    }
-
-    /***********************
-     * Join Instructions Modal (for Security)
-     ***********************/
-    function showJoinInstructions() {
-      const joinHTML = `
-        <h2>Welcome!</h2>
-        <p>Messages are already loaded.</p>
-        <p>Use /help for a list of commands.</p>
-        <p>For security, please click the Public Chat tab twice to join. We recommend tapping it again after everything loads.</p>
-        <p>Note: The server resets every 2 days.</p>
-        <div class="arrow">↖️</div>`;
-      showModal(joinHTML);
-    }
-
-    /***********************
-     * Drawing Board Functions
-     ***********************/
-    function initDrawingBoard(canvas) {
-      drawingContext = canvas.getContext('2d');
-      drawingContext.lineJoin = "round";
-      drawingContext.lineCap = "round";
-      drawingContext.strokeStyle = penColor;
-      drawingContext.lineWidth = penThickness;
-      tracerOverlay = document.createElement('canvas');
-      tracerOverlay.id = "tracer-overlay";
-      tracerOverlay.style.position = "absolute";
-      tracerOverlay.style.top = "0";
-      tracerOverlay.style.left = "0";
-      tracerOverlay.style.pointerEvents = "none";
-      chatBox.appendChild(tracerOverlay);
-      tracerCtx = tracerOverlay.getContext('2d');
-      resizeTracer();
-
-      canvas.addEventListener('mousedown', (e) => {
-        drawing = true;
-        const rect = canvas.getBoundingClientRect();
-        lastX = e.clientX - rect.left;
-        lastY = e.clientY - rect.top;
-        drawingContext.beginPath();
-        drawingContext.moveTo(lastX, lastY);
-        if (drawData) {
-          drawData.set({
-            type: "begin",
-            x: lastX,
-            y: lastY,
-            username: username,
-            color: penColor,
-            thickness: penThickness,
-            timestamp: Date.now()
-          });
-        }
-      });
-      canvas.addEventListener('mouseup', () => { drawing = false; });
-      canvas.addEventListener('mouseout', () => { drawing = false; });
-      canvas.addEventListener('mousemove', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        if (drawing) {
-          drawingContext.strokeStyle = penColor;
-          drawingContext.lineWidth = penThickness;
-          drawingContext.beginPath();
-          drawingContext.moveTo(lastX, lastY);
-          drawingContext.lineTo(x, y);
-          drawingContext.stroke();
-          if (drawData) {
-            drawData.set({
-              type: "draw",
-              prevX: lastX,
-              prevY: lastY,
-              x: x,
-              y: y,
-              username: username,
-              color: penColor,
-              thickness: penThickness,
-              timestamp: Date.now()
-            });
-          }
-          lastX = x;
-          lastY = y;
-        }
-        if (tracerEnabled) {
-          let now = Date.now();
-          if (now - lastTracerTime > 50) {
-            lastTracerTime = now;
-            localTracer = { x, y, timestamp: now, color: penColor };
-            if (drawData) {
-              drawData.set({
-                type: "tracer",
-                x: x,
-                y: y,
-                username: username,
-                color: penColor,
-                timestamp: now
-              });
-            }
-          }
-        }
-      });
-      canvas.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        showDrawingMenu(e.clientX, e.clientY);
-      });
-      updateTracerOverlay();
-    }
-    function handleRemoteDrawing(data, key) {
-      if (!data || data.username === username) return;
-      if (!remoteTimestamps[data.username] || data.timestamp > remoteTimestamps[data.username]) {
-        remoteTimestamps[data.username] = data.timestamp;
-      } else { return; }
-      if (data.type === "begin") {
-        remotePositions[data.username] = { lastX: data.x, lastY: data.y };
-      } else if (data.type === "draw") {
-        let pos = remotePositions[data.username] || { lastX: data.prevX, lastY: data.prevY };
-        drawingContext.strokeStyle = data.color;
-        drawingContext.lineWidth = data.thickness;
-        drawingContext.beginPath();
-        drawingContext.moveTo(pos.lastX, pos.lastY);
-        drawingContext.lineTo(data.x, data.y);
-        drawingContext.stroke();
-        remotePositions[data.username] = { lastX: data.x, lastY: data.y };
-      } else if (data.type === "clear") {
-        drawingContext.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-      } else if (data.type === "tracer") {
-        remoteTracers[data.username] = { x: data.x, y: data.y, timestamp: data.timestamp, color: data.color };
-      }
-    }
-    function resizeCanvas() {
-      if (drawingCanvas) {
-        drawingCanvas.width = chatBox.clientWidth;
-        drawingCanvas.height = chatBox.clientHeight;
-      }
-      resizeTracer();
-    }
-    function resizeTracer() {
-      if (tracerOverlay) {
-        tracerOverlay.width = chatBox.clientWidth;
-        tracerOverlay.height = chatBox.clientHeight;
-      }
-    }
-    window.addEventListener('resize', resizeCanvas);
-    function updateTracerOverlay() {
-      if (!tracerCtx) return;
-      tracerCtx.clearRect(0, 0, tracerOverlay.width, tracerOverlay.height);
-      let now = Date.now();
-      for (const user in remoteTracers) {
-        if (now - remoteTracers[user].timestamp < 500) {
-          tracerCtx.fillStyle = remoteTracers[user].color;
-          tracerCtx.beginPath();
-          tracerCtx.arc(remoteTracers[user].x, remoteTracers[user].y, 5, 0, 2 * Math.PI);
-          tracerCtx.fill();
-        }
-      }
-      if (tracerEnabled) {
-        tracerCtx.strokeStyle = localTracer.color;
-        tracerCtx.lineWidth = 2;
-        tracerCtx.setLineDash([4, 2]);
-        tracerCtx.beginPath();
-        tracerCtx.arc(localTracer.x, localTracer.y, 6, 0, 2 * Math.PI);
-        tracerCtx.stroke();
-        tracerCtx.setLineDash([]);
-      }
-      requestAnimationFrame(updateTracerOverlay);
-    }
-    function showDrawingMenu(x, y) {
-      const drawingMenu = document.getElementById('drawing-menu');
-      drawingMenu.style.left = x + 'px';
-      drawingMenu.style.top = y + 'px';
-      drawingMenu.style.display = 'block';
-    }
-    window.addEventListener('click', function (e) {
-      if (e.button !== 2) {
-        document.getElementById('drawing-menu').style.display = 'none';
-      }
-    });
-    document.querySelectorAll('.color-option').forEach(button => {
-      button.addEventListener('click', function () {
-        penColor = this.getAttribute('data-color');
-        document.getElementById('drawing-menu').style.display = 'none';
-      });
-    });
-    document.getElementById('thickness-range').addEventListener('input', function () {
-      penThickness = this.value;
-    });
-    document.getElementById('tracer-toggle').addEventListener('change', function () {
-      tracerEnabled = this.checked;
-    });
-    document.getElementById('clear-board-button').addEventListener('click', function () {
-      if (drawingContext && drawingCanvas) {
-        drawingContext.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-        if (drawData) { 
-          drawData.set({ type: "clear", username: username, timestamp: Date.now() });
-        }
-        document.getElementById('drawing-menu').style.display = 'none';
-      }
-    });
-
-    /***********************
-     * Final Initialization
-     ***********************/
-    rooms[publicRoomKey] = gun.get(publicRoomKey);
-    updateTabs();
-    showJoinInstructions();
-  </script>
+/* finalize: ensure canvases sized & refresh char origins after layout */
+setTimeout(()=>{ resizeCanvases(); buildGrid(); refreshCharOrigins(); }, 120);
+</script>
 </body>
 </html>
