@@ -1,501 +1,175 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Cheat Click — Shuttle + Grid (Global Sparks)</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-  :root{
-    --bg:#060708;
-    --panel: rgba(12,16,20,0.86);
-    --accent: #14f0e6;
-    --muted: #9fb2c9;
-    --text: #dfeff7;
-  }
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:"Share Tech Mono", monospace;overflow:hidden}
-  /* canvases stack under UI; pointer-events none so UI works */
-  canvas{position:fixed;left:0;top:0;display:block;pointer-events:none}
-
-  /* CENTERED GLASS BOX */
-  .center {
-    position: absolute;
-    left:50%;
-    top:50%;
-    transform: translate(-50%,-50%);
-    width: min(980px, 94vw);
-    max-height: 92vh;
-    display: grid;
-    grid-template-columns: 1fr 380px;
-    gap: 18px;
-    padding: 18px;
-    border-radius: 14px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-    box-shadow: 0 12px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.02);
-    backdrop-filter: blur(6px) saturate(1.03);
-    border: 1px solid rgba(255,255,255,0.03);
-  }
-
-  .logo-pane { padding: 6px 10px; display:flex; flex-direction:column; gap:8px; align-items:flex-start; overflow:auto; }
-  #asciiTitle { white-space: pre; line-height: 0.92; font-size:12px; color:var(--text); user-select:none; }
-  #asciiTitle div{ display:block }
-  #asciiTitle span{ display:inline-block; transition: transform 140ms linear, color 160ms linear, filter 160ms linear; will-change: transform, color; }
-
-  .note { color:var(--muted); font-size:12px; margin-top:6px; }
-
-  .ui-pane{
-    padding: 12px;
-    border-radius: 10px;
-    background: rgba(6,8,10,0.45);
-    border: 1px solid rgba(255,255,255,0.02);
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-    align-items:center;
-  }
-
-  .input-row { display:flex; gap:8px; width:100%; justify-content:center; flex-wrap:wrap; }
-  input[type="text"]{
-    font-family:inherit; padding:10px; min-width:160px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);
-    background: rgba(0,0,0,0.35); color:var(--text); outline:none;
-  }
-
-  .bigbutton{
-    padding:14px 18px; border-radius:10px; min-width:240px; cursor:pointer;
-    background: linear-gradient(180deg, rgba(20,240,230,0.12), rgba(0,0,0,0.03));
-    color:var(--text); border:1px solid rgba(20,240,230,0.22); font-weight:700;
-  }
-  .bigbutton:active{ transform: translateY(2px) }
-
-  .stats{ display:flex; gap:10px; justify-content:center; width:100%; }
-  .stat{ background: rgba(0,0,0,0.2); padding:10px 12px; border-radius:8px; font-size:13px; color:var(--muted); text-align:center; min-width:90px }
-  .stat .val{ font-size:20px; color:var(--accent); text-shadow: 0 4px 18px rgba(20,240,230,0.08) }
-
-  table{ width:100%; border-collapse:collapse; font-size:12px; color:var(--text) }
-  thead th{ text-align:left; padding:8px; color:var(--muted); font-size:12px; border-bottom:1px solid rgba(255,255,255,0.03) }
-  tbody td{ padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.02) }
-  tbody tr:hover td{ background: rgba(20,240,230,0.02) }
-
-  .foot { font-size:11px; color:var(--muted); text-align:center; margin-top:6px }
-
-  @media (max-width:920px){
-    .center{ grid-template-columns: 1fr; width: 96vw; }
-    .ui-pane{ order:2 }
-    .logo-pane{ order:1 }
-  }
-</style>
+  <meta charset="UTF-8">
+  <title>Peer.js CRT Terminal Chat</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #000;
+      color: #0f0;
+      font-family: "Courier New", monospace;
+      text-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
+      overflow: hidden;
+    }
+    #chat {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.3em;
+    }
+    #inputBar {
+      border-top: 1px solid #0f0;
+    }
+    #msgBox {
+      width: 100%;
+      background: #000;
+      color: #0f0;
+      border: none;
+      outline: none;
+      font-family: inherit;
+      font-size: 16px;
+      padding: 10px;
+      text-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
+    }
+    .system { color: #0f0; }
+    .error { color: #f33; text-shadow: 0 0 5px #f33, 0 0 10px #f33; }
+    .chat { color: #0f0; }
+    /* CRT scanlines effect */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 255, 0, 0.1) 0px,
+        rgba(0, 255, 0, 0.05) 2px,
+        transparent 3px
+      );
+      pointer-events: none;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: radial-gradient(circle, rgba(0,255,0,0.1) 0%, transparent 80%);
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body>
-
-<!-- canvases: fluid background, interactive grid, click particles -->
-<canvas id="fluidCanvas"></canvas>
-<canvas id="gridCanvas"></canvas>
-<canvas id="clickCanvas"></canvas>
-
-<div class="center" role="main" aria-label="game container">
-  <div class="logo-pane">
-    <div id="asciiTitle" aria-hidden="true"></div>
-    <div class="note">Use as many external cheats as you want — leaderboard only accepts strictly higher scores per name.</div>
-    <div style="font-size:11px;color:var(--muted)">Move the cursor near the logo or grid to disturb them. Click anywhere on the page to spark.</div>
+  <div id="chat"></div>
+  <div id="inputBar">
+    <input type="text" id="msgBox" placeholder="Type command or message..." autofocus>
   </div>
 
-  <div class="ui-pane" aria-live="polite">
-    <div class="input-row">
-      <input id="name" type="text" maxlength="15" placeholder="Your name (max 15 chars)">
-      <button id="startBtn" class="bigbutton">START GAME</button>
-    </div>
+  <script>
+    let peer;
+    let connections = {};
 
-    <div class="stats">
-      <div class="stat"><div style="font-size:11px;color:var(--muted)">TIME LEFT</div><div id="timer" class="val">5</div></div>
-      <div class="stat"><div style="font-size:11px;color:var(--muted)">SCORE</div><div id="score" class="val">0</div></div>
-    </div>
+    const chat = document.getElementById("chat");
+    const msgBox = document.getElementById("msgBox");
 
-    <button id="clickZone" class="bigbutton" style="min-width:260px">CLICK AREA</button>
-
-    <div style="width:100%; overflow:auto; max-height:260px">
-      <table aria-label="leaderboard">
-        <thead><tr><th>#</th><th>Name</th><th>Score</th></tr></thead>
-        <tbody id="leaderboard"></tbody>
-      </table>
-    </div>
-
-    <div class="foot">Leaderboard updates globally via Gun.js — only strictly higher scores overwrite an existing entry.</div>
-  </div>
-</div>
-
-<script>
-/* ============================================
-   0) USER-SUPPLIED ASCII ART (used verbatim)
-   ============================================ */
-const userArt = `░█████╗░██╗░░██╗███████╗░█████╗░████████╗  ░█████╗░██╗░░░░░██╗░█████╗░██╗░░██╗███████╗██████╗░
-██╔══██╗██║░░██║██╔════╝██╔══██╗╚══██╔══╝  ██╔══██╗██║░░░░░██║██╔══██╗██║░██╔╝██╔════╝██╔══██╗
-██║░░╚═╝███████║█████╗░░███████║░░░██║░░░  ██║░░╚═╝██║░░░░░██║██║░░╚═╝█████═╝░█████╗░░██████╔╝
-██║░░██╗██╔══██║██╔══╝░░██╔══██║░░░██║░░░  ██║░░██╗██║░░░░░██║██║░░██╗██╔═██╗░██╔══╝░░██╔══██╗
-╚█████╔╝██║░░██║███████╗██║░░██║░░░██║░░░  ╚█████╔╝███████╗██║╚█████╔╝██║░╚██╗███████╗██║░░██║
-░╚════╝░╚═╝░░╚═╝╚══════╝╚═╝░░╚═╝░░░╚═╝░░░  ░╚════╝░╚══════╝╚═╝░╚════╝░╚═╝░░╚═╝╚══════╝╚═╝░░╚═╝`;
-
-/* ============================================
-   1) ASCII TITLE SOFT-BODY
-   ============================================ */
-const asciiDiv = document.getElementById('asciiTitle');
-const chars = [];
-userArt.split("\n").forEach(line=>{
-  const row = document.createElement('div');
-  [...line].forEach(ch=>{
-    const sp = document.createElement('span');
-    sp.textContent = ch === ' ' ? '\u00A0' : ch;
-    // physics state
-    sp._ox = 0; sp._oy = 0; sp._x = 0; sp._y = 0; sp._vx = 0; sp._vy = 0;
-    sp.style.willChange = 'transform, color';
-    row.appendChild(sp);
-    chars.push(sp);
-  });
-  asciiDiv.appendChild(row);
-});
-
-/* set original positions after layout */
-function refreshCharOrigins(){
-  for(const sp of chars){
-    const r = sp.getBoundingClientRect();
-    sp._ox = r.left + r.width/2;
-    sp._oy = r.top + r.height/2;
-    sp._x = 0; sp._y = 0; sp._vx = 0; sp._vy = 0;
-  }
-}
-setTimeout(refreshCharOrigins, 60);
-addEventListener('resize', ()=> setTimeout(refreshCharOrigins, 120));
-
-let mouseX = -9999, mouseY = -9999;
-document.addEventListener('mousemove', (e)=>{ mouseX = e.clientX; mouseY = e.clientY; });
-
-const LOG_DAMP = 0.86;
-const LOG_STIFF = 0.14;
-const LOG_RADIUS = 90;
-
-function animateLogo(){
-  for(const sp of chars){
-    if(!sp._ox) continue;
-    const dx = sp._ox - mouseX;
-    const dy = sp._oy - mouseY;
-    const dist = Math.hypot(dx,dy) || 0.0001;
-    if(dist < LOG_RADIUS){
-      const f = (LOG_RADIUS - dist) / LOG_RADIUS;
-      const nx = dx/dist, ny = dy/dist;
-      sp._vx += nx * f * 2.0;
-      sp._vy += ny * f * 2.0;
+    function log(msg, type="system") {
+      const span = document.createElement("div");
+      span.className = type;
+      span.textContent = msg;
+      chat.appendChild(span);
+      chat.scrollTop = chat.scrollHeight;
     }
-    // spring to center
-    sp._vx += (-sp._x) * LOG_STIFF;
-    sp._vy += (-sp._y) * LOG_STIFF;
-    sp._vx *= LOG_DAMP; sp._vy *= LOG_DAMP;
-    sp._x += sp._vx; sp._y += sp._vy;
 
-    const disp = Math.hypot(sp._x, sp._y);
-    const scale = 1 + Math.min(0.45, disp/60);
-    // hue based on displacement (cool -> warmer)
-    const hue = 190 - Math.min(80, Math.floor(disp * 2.5));
-    sp.style.transform = `translate(${sp._x}px, ${sp._y}px) scale(${scale})`;
-    sp.style.color = `hsl(${hue} 85% 78%)`;
-    sp.style.textShadow = disp>2 ? `0 6px 18px rgba(20,240,230,0.06)` : 'none';
-  }
-  requestAnimationFrame(animateLogo);
-}
-requestAnimationFrame(animateLogo);
-
-/* ============================================
-   2) SHUTTLE / FLUID BACKGROUND
-   ============================================ */
-const fluid = document.getElementById('fluidCanvas');
-const fctx = fluid.getContext('2d');
-const gridCanvas = document.getElementById('gridCanvas');
-const gctx = gridCanvas.getContext('2d');
-const clickCanvas = document.getElementById('clickCanvas');
-const cctx = clickCanvas.getContext('2d');
-
-function resizeCanvases(){
-  fluid.width = gridCanvas.width = clickCanvas.width = innerWidth;
-  fluid.height = gridCanvas.height = clickCanvas.height = innerHeight;
-}
-addEventListener('resize', resizeCanvases);
-resizeCanvases();
-
-/* Flow field sampler (smooth layered sinusoids) */
-let ttime = 0;
-function sampleField(x,y,t){
-  const s = 0.0011;
-  const a = Math.sin((x + t*110) * s) + Math.cos((y - t*64) * s * 1.1);
-  const b = Math.sin((x*0.7 - t*54) * s * 1.3) - Math.cos((y*1.2 + t*33) * s);
-  const angle = (a + b) * Math.PI;
-  return { vx: Math.cos(angle), vy: Math.sin(angle) };
-}
-
-/* shuttle-like particles */
-const N = Math.max(220, Math.floor((innerWidth*innerHeight)/7000));
-const particles = [];
-for(let i=0;i<N;i++){
-  particles.push({
-    x: Math.random()*innerWidth,
-    y: Math.random()*innerHeight,
-    vx: 0, vy: 0,
-    life: 120 + Math.random()*180,
-    size: 0.6 + Math.random()*1.6
-  });
-}
-
-let mouseInfluence = {x:-9999,y:-9999};
-document.addEventListener('mousemove', e=>{ mouseInfluence.x = e.clientX; mouseInfluence.y = e.clientY; });
-document.addEventListener('mouseleave', ()=>{ mouseInfluence.x = -9999; mouseInfluence.y = -9999; });
-
-function drawFluid(){
-  ttime += 1;
-  fctx.clearRect(0,0,fluid.width,fluid.height);
-
-  // subtle overlay gradient
-  const g = fctx.createLinearGradient(0,0,innerWidth,innerHeight);
-  g.addColorStop(0, 'rgba(4,6,8,0.78)');
-  g.addColorStop(1, 'rgba(8,10,14,0.78)');
-  fctx.fillStyle = g;
-  fctx.fillRect(0,0,fluid.width,fluid.height);
-
-  for(const p of particles){
-    const v = sampleField(p.x, p.y, ttime*0.013);
-    p.vx += v.vx * 0.16;
-    p.vy += v.vy * 0.16;
-    // mouse soft repulse
-    const dx = p.x - mouseInfluence.x;
-    const dy = p.y - mouseInfluence.y;
-    const d = Math.hypot(dx,dy);
-    if(d < 160){
-      const f = (160 - d) / 160;
-      p.vx += (dx/d || 0.001) * f * 0.6;
-      p.vy += (dy/d || 0.001) * f * 0.6;
-    }
-    p.vx *= 0.96; p.vy *= 0.96;
-    p.x += p.vx; p.y += p.vy;
-
-    // wrap
-    if(p.x < -20) p.x = innerWidth + 20;
-    if(p.x > innerWidth + 20) p.x = -20;
-    if(p.y < -20) p.y = innerHeight + 20;
-    if(p.y > innerHeight + 20) p.y = -20;
-
-    // draw elongated shuttle streak
-    const grad = fctx.createLinearGradient(p.x - p.vx*6, p.y - p.vy*6, p.x + p.vx*2, p.y + p.vy*2);
-    grad.addColorStop(0, 'rgba(20,240,230,0.04)');
-    grad.addColorStop(1, 'rgba(255,79,167,0.14)');
-    fctx.fillStyle = grad;
-    fctx.beginPath();
-    fctx.ellipse(p.x, p.y, p.size*6, p.size*2.6, Math.atan2(p.vy,p.vx), 0, Math.PI*2);
-    fctx.fill();
-
-    // bright center
-    fctx.fillStyle = 'rgba(20,240,230,0.45)';
-    fctx.fillRect(p.x - 0.65, p.y - 0.65, 1.5, 1.5);
-  }
-  requestAnimationFrame(drawFluid);
-}
-requestAnimationFrame(drawFluid);
-
-/* ============================================
-   3) SUBTLE GRID (interactive like title)
-   ============================================ */
-const gridPoints = [];
-let gridSpacing = 40;
-function buildGrid(){
-  gridPoints.length = 0;
-  const cols = Math.ceil(innerWidth / gridSpacing);
-  const rows = Math.ceil(innerHeight / gridSpacing);
-  for(let y=0; y<rows; y++){
-    for(let x=0; x<cols; x++){
-      const gx = Math.round((x+0.5) * gridSpacing);
-      const gy = Math.round((y+0.5) * gridSpacing);
-      gridPoints.push({ ox: gx, oy: gy, x: gx, y: gy, vx:0, vy:0 });
-    }
-  }
-}
-buildGrid();
-addEventListener('resize', ()=> { gridSpacing = Math.max(28, Math.round(Math.min(48, innerWidth/25))); buildGrid(); });
-
-document.addEventListener('mousemove', (e)=>{
-  for(const p of gridPoints){
-    const dx = p.ox - e.clientX;
-    const dy = p.oy - e.clientY;
-    const dist = Math.hypot(dx,dy) || 0.0001;
-    if(dist < 120){
-      const f = (120 - dist) / 120;
-      p.vx += (dx/dist) * f * 3.0;
-      p.vy += (dy/dist) * f * 3.0;
-    }
-  }
-});
-
-function drawGrid(){
-  gctx.clearRect(0,0,gridCanvas.width, gridCanvas.height);
-  // subtle connecting lines (faint)
-  gctx.lineWidth = 1;
-  for(const p of gridPoints){
-    // physics: spring to origin + damping
-    const sx = p.ox - p.x;
-    const sy = p.oy - p.y;
-    p.vx += sx * 0.08;
-    p.vy += sy * 0.08;
-    p.vx *= 0.88; p.vy *= 0.88;
-    p.x += p.vx; p.y += p.vy;
-    // color shift based on displacement
-    const disp = Math.hypot(p.x - p.ox, p.y - p.oy);
-    const alpha = Math.min(0.24, 0.02 + disp/160);
-    const hue = 190 - Math.min(80, Math.floor(disp*3));
-    gctx.fillStyle = `hsla(${hue},85%,75%, ${0.14 + alpha})`;
-    gctx.beginPath();
-    gctx.arc(p.x, p.y, 1.35 + Math.min(2.0, disp/18), 0, Math.PI*2);
-    gctx.fill();
-  }
-
-  // optional subtle grid lines: connect nearby points faintly (very subtle)
-  gctx.strokeStyle = 'rgba(20,240,230,0.02)';
-  for(let i=0;i<gridPoints.length;i++){
-    const p = gridPoints[i];
-    gctx.beginPath();
-    gctx.rect(p.ox-0.5, p.oy-0.5, 1, 1);
-    gctx.stroke();
-  }
-
-  requestAnimationFrame(drawGrid);
-}
-requestAnimationFrame(drawGrid);
-
-/* ============================================
-   4) CLICK PARTICLES - used for ALL clicks
-   ============================================ */
-const clicks = [];
-function spawnClick(x,y){
-  for(let i=0;i<18;i++){
-    clicks.push({
-      x,y,
-      vx:(Math.random()-0.5)*6,
-      vy:(Math.random()-0.9)*6,
-      life:50 + Math.random()*40,
-      col: Math.random()*360
+    msgBox.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        const text = msgBox.value.trim();
+        msgBox.value = "";
+        if (text) handleCommand(text);
+      }
     });
-  }
-}
 
-function drawClicks(){
-  cctx.clearRect(0,0,clickCanvas.width, clickCanvas.height);
-  for(let i=clicks.length-1;i>=0;i--){
-    const p = clicks[i];
-    p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.life--;
-    cctx.globalAlpha = Math.max(0, p.life/90);
-    cctx.fillStyle = `hsl(${p.col} 95% 60%)`;
-    cctx.fillRect(p.x, p.y, 3, 3);
-    if(p.life <= 0) clicks.splice(i,1);
-  }
-  requestAnimationFrame(drawClicks);
-}
-requestAnimationFrame(drawClicks);
+    function handleCommand(input) {
+      if (input.startsWith("/set ")) {
+        const id = input.split(" ")[1];
+        if (!id) return log("[Error] Usage: /set <yourid>", "error");
+        if (peer) return log("[Error] Peer already created. Restart page to change ID.", "error");
 
-/* make every click on the page spawn sparks */
-document.addEventListener('click', function(e){
-  // spawn sparks at click location for visual feedback everywhere
-  spawnClick(e.clientX, e.clientY);
-});
+        peer = new Peer(id);
 
-/* ============================================
-   5) GAME + GUN LEADERBOARD (protected)
-   ============================================ */
-const gun = Gun();
-const lb = gun.get('cheat:shuttle:grid:leaderboard');
+        peer.on("open", () => log("[System] Peer ready with ID: " + id, "system"));
+        peer.on("error", err => log("[Error] " + err.type, "error"));
+        peer.on("connection", conn => {
+          setupConnection(conn);
+          conn.on("open", () => {
+            const peerList = Object.keys(connections);
+            conn.send({ type: "peer-list", peers: peerList });
+          });
+        });
 
-let gameScore = 0;
-let gameTime = 5;
-let timerRef = null;
-let isPlaying = false;
+      } else if (input.startsWith("/connect ")) {
+        const id = input.split(" ")[1];
+        if (!id) return log("[Error] Usage: /connect <peerid>", "error");
+        if (!peer) return log("[Error] You must set your ID first with /set", "error");
+        if (connections[id]) return log("[Error] Already connected to " + id, "error");
 
-const nameInput = document.getElementById('name');
-const startBtn = document.getElementById('startBtn');
-const clickZone = document.getElementById('clickZone');
-const timerEl = document.getElementById('timer');
-const scoreEl = document.getElementById('score');
-const leaderboardEl = document.getElementById('leaderboard');
+        const conn = peer.connect(id);
+        setupConnection(conn);
 
-startBtn.addEventListener('click', ()=> startGame());
-clickZone.addEventListener('click', (e)=>{
-  // clicking the clickZone increments score only while playing
-  if(!isPlaying) return;
-  gameScore++;
-  scoreEl.textContent = String(gameScore);
-  // DO NOT spawn here — global click listener handles sparks for everything
-});
+      } else if (input === "/status") {
+        if (!peer) return log("[Error] You must set your ID first with /set", "error");
+        const peers = Object.keys(connections);
+        log("[System] Connections: " + (peers.length ? peers.join(", ") : "none"), "system");
 
-// keyboard support for space/enter to click while playing
-document.addEventListener('keydown', e=>{
-  if((e.key === ' ' || e.key === 'Enter') && isPlaying){
-    e.preventDefault();
-    gameScore++; scoreEl.textContent = String(gameScore);
-    // spawn center sparks for keyboard presses
-    spawnClick(innerWidth/2, innerHeight/2);
-  }
-});
+      } else if (input === "/help") {
+        log("[System] Commands:\n" +
+            "  /set <id>      - Set your peer ID\n" +
+            "  /connect <id>  - Connect to another peer\n" +
+            "  /status        - Show connected peers\n" +
+            "  /help          - Show this help\n" +
+            "  (anything else is sent as a message)", "system");
 
-function sanitizeName(s){
-  if(!s) return null;
-  s = s.toString().replace(/[^\w\- ]/g, '').trim();
-  if(s.length === 0) return null;
-  return s.slice(0,15);
-}
-
-function startGame(){
-  const nm = sanitizeName(nameInput.value);
-  if(!nm){ alert('Enter a simple name (letters / numbers / - _).'); return; }
-  gameScore = 0; gameTime = 5;
-  isPlaying = true;
-  scoreEl.textContent = "0"; timerEl.textContent = String(gameTime);
-  startBtn.textContent = "PLAYING..."; startBtn.disabled = true;
-  clearInterval(timerRef);
-  timerRef = setInterval(()=>{
-    gameTime--;
-    timerEl.textContent = String(gameTime);
-    if(gameTime <= 0){
-      clearInterval(timerRef);
-      isPlaying = false;
-      startBtn.disabled = false;
-      startBtn.textContent = "START GAME";
-      submitScore(nm, gameScore);
+      } else {
+        if (!peer) return log("[Error] You must set your ID first with /set", "error");
+        sendMsg(input);
+        log("Me: " + input, "chat");
+      }
     }
-  }, 1000);
-}
 
-function submitScore(name, score){
-  const s = Math.floor(Number(score));
-  if(!Number.isFinite(s) || s < 0 || s > 10_000_000) return;
-  lb.get(name).once(prev=>{
-    if(!prev || typeof prev.score !== 'number' || s > prev.score){
-      lb.get(name).put({ name, score: s, t: Date.now() });
-    } else {
-      console.log('Attempted lower score — ignored');
+    function setupConnection(conn) {
+      conn.on("open", () => {
+        connections[conn.peer] = conn;
+        log("[System] Connected to " + conn.peer, "system");
+      });
+
+      conn.on("data", data => {
+        if (typeof data === "string") {
+          log(conn.peer + ": " + data, "chat");
+        } else if (data.type === "peer-list") {
+          data.peers.forEach(pid => {
+            if (pid !== peer.id && !connections[pid]) {
+              const c = peer.connect(pid);
+              setupConnection(c);
+            }
+          });
+        }
+      });
+
+      conn.on("close", () => {
+        delete connections[conn.peer];
+        log("[System] " + conn.peer + " disconnected.", "system");
+      });
     }
-  });
-}
 
-/* live leaderboard listening & render with sanitation */
-const scores = {};
-lb.map().on(data=>{
-  if(!data) return;
-  if(!data.name || typeof data.score !== 'number') return;
-  const safeName = data.name.toString().slice(0,15).replace(/[^\w\- ]/g,'');
-  scores[safeName] = data.score;
-  renderLeaderboard();
-});
-
-function renderLeaderboard(){
-  const rows = Object.entries(scores).sort((a,b)=> b[1]-a[1]).slice(0,15);
-  leaderboardEl.innerHTML = rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r[0])}</td><td>${r[1]}</td></tr>`).join('');
-}
-function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-
-/* finalize: ensure canvases sized & refresh char origins after layout */
-setTimeout(()=>{ resizeCanvases(); buildGrid(); refreshCharOrigins(); }, 120);
-</script>
+    function sendMsg(msg) {
+      for (let id in connections) {
+        connections[id].send(msg);
+      }
+    }
+  </script>
 </body>
 </html>
