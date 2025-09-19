@@ -3202,8 +3202,12 @@
         vrContainer.appendChild(vrRenderer.domElement);
         
         // Create a new scene for VR with menu background
-        vrScene = new THREE.Scene();
+        vrScene = scene.clone(); // Start with a clone of the current scene
         vrScene.background = new THREE.Color(0x000000); // Black background
+        
+        // Load level 2 when entering VR
+        currentLevel = 2;
+        loadLevel(currentLevel);
         
         // Setup camera
         vrCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -3349,10 +3353,21 @@
       
       if (!isInMenu) {
         // In-game: Jump
-        if (canJump) {
+        if (canJump && playerBody) {
           playerBody.velocity.y = 10;
           canJump = false;
           playSound('jumpSound');
+          
+          // Check for double jump
+          if (hasDoubleJump) {
+            setTimeout(() => {
+              if (!canJump) { // If still in air after initial jump
+                hasDoubleJump = false;
+                playerBody.velocity.y = 12; // Slightly higher than first jump
+                playSound('jumpSound');
+              }
+            }, 200);
+          }
         }
         return;
       }
@@ -3397,43 +3412,63 @@
       const session = vrRenderer.xr.getSession();
       if (!session) return;
       
+      // Get reference space for movement
       const referenceSpace = renderer.xr.getReferenceSpace();
       
-      // Update VR controls
-      if (vrController && !isInMenu) {
-        // Get controller input for movement
-        const gamepads = navigator.getGamepads();
-        const gamepad = gamepads[0]; // Left controller
+      // Get controller input for movement
+      const gamepads = navigator.getGamepads();
+      const leftController = gamepads[0]; // Left controller
+      
+      if (leftController && !isInMenu && playerBody) {
+        // Get movement from left thumbstick (axes 2 and 3 for left controller)
+        const xAxis = leftController.axes[2] || 0;
+        const zAxis = leftController.axes[3] || 0;
         
-        if (gamepad && gamepad.axes && gamepad.axes.length >= 2) {
-          // Left stick for movement (X and Z axes)
-          const xAxis = gamepad.axes[2];
-          const zAxis = gamepad.axes[3];
+        // Only move if thumbstick is pushed significantly
+        if (Math.abs(xAxis) > 0.1 || Math.abs(zAxis) > 0.1) {
+          // Get camera forward and right vectors
+          const forward = new THREE.Vector3(0, 0, -1);
+          const right = new THREE.Vector3(1, 0, 0);
           
-          // Get controller orientation
-          const controllerQuat = new THREE.Quaternion();
-          vrController.getWorldQuaternion(controllerQuat);
+          // Apply camera rotation to movement vectors
+          forward.applyQuaternion(vrCamera.quaternion);
+          right.applyQuaternion(vrCamera.quaternion);
           
-          // Create movement vector based on controller orientation
-          const moveDirection = new THREE.Vector3(xAxis, 0, -zAxis);
-          moveDirection.applyQuaternion(controllerQuat);
-          moveDirection.y = 0; // Keep movement horizontal
-          moveDirection.normalize();
+          // Flatten vectors to horizontal plane
+          forward.y = 0;
+          right.y = 0;
+          forward.normalize();
+          right.normalize();
+          
+          // Calculate movement direction based on input
+          const moveDirection = new THREE.Vector3();
+          moveDirection.add(forward.multiplyScalar(-zAxis)); // Forward/back
+          moveDirection.add(right.multiplyScalar(xAxis));    // Left/right
+          
+          // Normalize to prevent faster diagonal movement
+          if (moveDirection.length() > 0) {
+            moveDirection.normalize();
+          }
+          
+          // Apply movement speed
+          const speed = isSprinting ? 0.2 : 0.1;
+          moveDirection.multiplyScalar(speed);
           
           // Apply movement to player
-          if (moveDirection.length() > 0.1) {
-            playerBody.velocity.x = moveDirection.x * (isSprinting ? 10 : 5);
-            playerBody.velocity.z = moveDirection.z * (isSprinting ? 10 : 5);
-          } else {
-            // Apply damping when not moving
-            playerBody.velocity.x *= 0.9;
-            playerBody.velocity.z *= 0.9;
-          }
-          
-          // Update camera position to follow player
-          if (playerBody) {
-            vrCamera.position.lerp(playerBody.position, 0.1);
-          }
+          playerBody.velocity.x = moveDirection.x * 50; // Scale up for physics
+          playerBody.velocity.z = moveDirection.z * 50;
+        } else {
+          // Apply damping when not moving
+          playerBody.velocity.x *= 0.9;
+          playerBody.velocity.z *= 0.9;
+        }
+        
+        // Update camera position to follow player
+        if (playerBody) {
+          // Keep camera at head height above player
+          const targetPos = playerBody.position.clone();
+          targetPos.y += 1.6; // Eye level height
+          vrCamera.position.lerp(targetPos, 0.1);
         }
       }
       
