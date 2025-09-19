@@ -1,52 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8">
+  <title>SkyBound Odyssey - VR Mode</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>SkyBound Odyssey VR</title>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/VRControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/effects/StereoEffect.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/vr/WebXR.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/XRControllerModelFactory.js"></script>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-    }
-    canvas {
-      display: block;
-    }
-    #vrButton {
-      position: absolute;
-      left: 50%;
-      bottom: 20px;
-      transform: translateX(-50%);
-      padding: 12px 24px;
-      border: none;
-      border-radius: 4px;
-      background: #4CAF50;
-      color: white;
-      font-size: 16px;
-      cursor: pointer;
-      z-index: 1000;
-    }
-    #vrButton:hover {
-      background: #45a049;
-    }
-    #controllerInfo {
-      position: absolute;
-      top: 20px;
-      left: 20px;
-      color: white;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 10px;
-      border-radius: 4px;
-      z-index: 1000;
-      pointer-events: none;
-      display: none;
-    }
     body { margin: 0; overflow: hidden; background: #000; }
     canvas { image-rendering: pixelated; }
     /* Performance and FPS Counter Styles */
@@ -355,10 +314,6 @@
   </style>
 </head>
 <body>
-  <div id="info">
-    <button id="vrButton">ENTER VR</button>
-    <div id="controllerInfo">Controller Connected: No</div>
-  </div>
   <!-- Home Menu Overlay -->
   <div id="homeMenu">
 
@@ -421,7 +376,7 @@
   <button onclick="showLevelHub()">Level Hub</button>
   <button onclick="showStockMarket()">Stock Market</button>
   <button onclick="showShop()">Shop</button>
-  <!-- Button to open the provided blob URL -->
+  <button id="vrMenuButton" style="background: linear-gradient(45deg, #4a00e0, #8e2de2); color: white; border: 1px solid #4a00e0;">VR Mode</button>
   <button onclick="window.open('sites.google.com/my.sduhsd.net/skybound-odyssey/editor', '_blank')">Open Level editor</button>
   <div id="customLevelInput" style="display:none; margin-top:10px;">
     <textarea id="customLevelText" rows="3" style="width:100%"></textarea>
@@ -3168,6 +3123,270 @@
       setTimeout(() => { if (muzzleFlashMesh) muzzleFlashMesh.visible = false; }, 80);
     }
 
+    // --- VR Mode Setup ---
+    let vrMode = false;
+    let vrRenderer, vrScene, vrCamera, vrController;
+    let animationId; // To store the main game animation frame ID
+    
+    // Get the VR menu button
+    const vrButton = document.getElementById('vrMenuButton');
+    if (!vrButton) {
+      console.error('VR menu button not found!');
+    }
+    
+    // VR Container
+    const vrContainer = document.createElement('div');
+    vrContainer.id = 'vr-container';
+    vrContainer.style.position = 'fixed';
+    vrContainer.style.top = '0';
+    vrContainer.style.left = '0';
+    vrContainer.style.width = '100%';
+    vrContainer.style.height = '100%';
+    vrContainer.style.background = '#000';
+    vrContainer.style.display = 'none';
+    document.body.appendChild(vrContainer);
+    
+    // VR Loading Indicator
+    const vrLoading = document.createElement('div');
+    vrLoading.id = 'vr-loading';
+    vrLoading.style.position = 'absolute';
+    vrLoading.style.top = '50%';
+    vrLoading.style.left = '50%';
+    vrLoading.style.transform = 'translate(-50%, -50%)';
+    vrLoading.style.color = 'white';
+    vrLoading.style.textAlign = 'center';
+    vrLoading.innerHTML = '<p>Loading VR Mode...</p><p id="vr-status">Initializing VR</p>';
+    vrContainer.appendChild(vrLoading);
+    
+    // Check for VR support and update button state
+    function checkVRSupport() {
+      if ('xr' in navigator) {
+        navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+          if (supported) {
+            vrButton.style.display = 'inline-block';
+            vrButton.disabled = false;
+            vrButton.title = 'Enter VR Mode';
+            vrButton.addEventListener('click', initVR);
+          } else {
+            vrButton.disabled = true;
+            vrButton.title = 'VR not supported in this browser';
+          }
+        }).catch(err => {
+          console.error('VR support check failed:', err);
+          vrButton.disabled = true;
+          vrButton.title = 'VR support check failed';
+        });
+      } else {
+        vrButton.disabled = true;
+        vrButton.title = 'WebXR not supported in this browser';
+      }
+    }
+    
+    // Check VR support when the page loads
+    window.addEventListener('load', checkVRSupport);
+    
+    // Initialize VR Mode
+    async function initVR() {
+      try {
+        // Show loading
+        vrContainer.style.display = 'block';
+        document.getElementById('vr-status').textContent = 'Initializing WebXR...';
+        vrButton.disabled = true;
+        vrButton.textContent = 'Starting VR...';
+        
+        // Initialize Three.js renderer for VR
+        vrRenderer = new THREE.WebGLRenderer({ antialias: true });
+        vrRenderer.setPixelRatio(window.devicePixelRatio);
+        vrRenderer.setSize(window.innerWidth, window.innerHeight);
+        vrRenderer.xr.enabled = true;
+        vrContainer.appendChild(vrRenderer.domElement);
+        
+        // Create a new scene for VR
+        vrScene = new THREE.Scene();
+        
+        // Setup camera
+        vrCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        vrCamera.position.set(0, 1.6, 0); // Eye level height
+        
+        // Add lights
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444);
+        light.position.set(0, 1, 0);
+        vrScene.add(light);
+        
+        // Add floor
+        const floorGeometry = new THREE.PlaneGeometry(20, 20);
+        const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        vrScene.add(floor);
+        
+        // Clone the main game scene into VR
+        scene.traverse(child => {
+          if (child !== camera && child !== renderer) {
+            const clone = child.clone();
+            vrScene.add(clone);
+          }
+        });
+        
+        // Setup controller
+        vrController = vrRenderer.xr.getController(0);
+        vrController.addEventListener('selectstart', onSelectStart);
+        vrScene.add(vrController);
+        
+        // Add controller model if available
+        if (THREE.XRControllerModelFactory) {
+          const controllerModelFactory = new THREE.XRControllerModelFactory();
+          const controllerGrip = vrRenderer.xr.getControllerGrip(0);
+          controllerGrip.add(controllerModelFactory.createControllerModel(controllerGrip));
+          vrScene.add(controllerGrip);
+        }
+        
+        // Start VR session
+        document.getElementById('vr-status').textContent = 'Starting VR session...';
+        await vrRenderer.xr.setSession(await navigator.xr.requestSession('immersive-vr', {
+          optionalFeatures: ['local-floor', 'hand-tracking']
+        }));
+        
+        // Hide loading, show VR
+        vrLoading.style.display = 'none';
+        
+        // Hide other UI
+        document.querySelectorAll('body > *:not(#vr-container)').forEach(el => {
+          if (el.tagName !== 'SCRIPT') el.style.display = 'none';
+        });
+        
+        // Pause the main game loop
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+        }
+        
+        // Start VR animation loop
+        vrRenderer.setAnimationLoop(animateVR);
+        
+        vrMode = true;
+        vrButton.textContent = 'Exit VR';
+        vrButton.removeEventListener('click', initVR);
+        vrButton.addEventListener('click', exitVR);
+        
+      } catch (error) {
+        console.error('VR Error:', error);
+        document.getElementById('vr-status').textContent = `VR Error: ${error.message}`;
+      }
+    }
+    
+    function onSelectStart() {
+      if (!vrMode) return;
+      
+      // Create a ray from the controller
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera({ x: 0, y: 0 }, vrController);
+      
+      // Check for intersections with objects in the scene
+      const intersects = raycaster.intersectObjects(vrScene.children, true);
+      
+      if (intersects.length > 0) {
+        // Handle interaction with objects
+        const obj = intersects[0].object;
+        
+        // Simulate click on menu items
+        if (obj.userData && obj.userData.action) {
+          obj.userData.action();
+        }
+        // Handle game interactions
+        else if (obj.userData && obj.userData.type) {
+          // Add your VR interaction logic here based on object type
+          console.log('Interacted with:', obj.userData.type);
+        }
+      }
+    }
+    
+    function animateVR() {
+      if (!vrMode) return;
+      
+      // Update VR controls
+      if (vrController) {
+        // Sync physics with VR camera
+        if (playerBody) {
+          playerBody.position.copy(vrCamera.position);
+          playerBody.quaternion.copy(vrCamera.quaternion);
+        }
+      }
+      
+      // Update physics
+      const delta = clock.getDelta();
+      if (world) world.step(1/60, delta, 3);
+      
+      // Update objects
+      objects.forEach(obj => {
+        if (obj.mesh && obj.body) {
+          obj.mesh.position.copy(obj.body.position);
+          obj.mesh.quaternion.copy(obj.body.quaternion);
+        }
+        if (obj.update) obj.update();
+      });
+      
+      // Update VFX
+      updateVFX(delta);
+      
+      // Render the scene
+      vrRenderer.render(vrScene, vrCamera);
+    }
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      if (vrCamera) {
+        vrCamera.aspect = window.innerWidth / window.innerHeight;
+        vrCamera.updateProjectionMatrix();
+        vrRenderer.setSize(window.innerWidth, window.innerHeight);
+      }
+    });
+    
+    // Exit VR mode
+    async function exitVR() {
+      try {
+        if (vrRenderer && vrRenderer.xr && vrRenderer.xr.getSession()) {
+          await vrRenderer.xr.getSession().end();
+        }
+      } catch (err) {
+        console.error('Error exiting VR:', err);
+      }
+      
+      // Clean up VR
+      vrMode = false;
+      if (vrRenderer) {
+        vrRenderer.setAnimationLoop(null);
+      }
+      
+      // Hide VR container
+      if (vrContainer) {
+        vrContainer.style.display = 'none';
+      }
+      
+      // Show all UI elements
+      document.querySelectorAll('body > *').forEach(el => {
+        if (el.tagName !== 'SCRIPT') el.style.display = '';
+      });
+      
+      // Update button state
+      if (vrButton) {
+        vrButton.textContent = 'VR Mode';
+        vrButton.removeEventListener('click', exitVR);
+        vrButton.addEventListener('click', initVR);
+        vrButton.disabled = false;
+      }
+      
+      // Restart main game loop
+      animate();
+    }
+    
+    // Handle exiting VR through headset
+    window.addEventListener('vrdisplaypresentchange', (e) => {
+      if (!e.display.isPresenting) {
+        exitVR();
+      }
+    });
+
     // --- Web Audio API Setup for Music and Sound Effects ---
     let audioCtx = null;
     function getAudioCtx() {
@@ -3799,440 +4018,9 @@
   const audioPlayer = document.getElementById('backgroundMusic');
   audioPlayer.play().catch(e => {
     console.error("Autoplay failed. User interaction may be required. Error: " + e);
+    // You might want to add a play button here for the user to click
+    // if autoplay is blocked.
   });
-
-  // --- VR Initialization ---
-  let vrControls, vrController, vrCamera;
-  let isInVR = false;
-  let vrSession = null;
-  let menuScene, menuCamera, menuRenderer;
-  let isInMenu = true;
-  
-  // Create loading overlay
-  const loadingOverlay = document.createElement('div');
-  loadingOverlay.id = 'vr-loading';
-  loadingOverlay.style.position = 'fixed';
-  loadingOverlay.style.top = '0';
-  loadingOverlay.style.left = '0';
-  loadingOverlay.style.width = '100%';
-  loadingOverlay.style.height = '100%';
-  loadingOverlay.style.background = 'rgba(0,0,0,0.9)';
-  loadingOverlay.style.display = 'none';
-  loadingOverlay.style.justifyContent = 'center';
-  loadingOverlay.style.alignItems = 'center';
-  loadingOverlay.style.zIndex = '2000';
-  loadingOverlay.style.color = 'white';
-  loadingOverlay.style.fontSize = '24px';
-  loadingOverlay.style.flexDirection = 'column';
-  loadingOverlay.innerHTML = `
-    <div class="spinner"></div>
-    <div id="loading-text" style="margin: 20px 0; text-align: center;">Initializing VR...</div>
-    <div id="loading-progress" style="width: 80%; max-width: 400px; height: 10px; background: #333; margin: 10px 0; border-radius: 5px;">
-      <div id="loading-bar" style="width: 0%; height: 100%; background: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>
-    </div>
-    <button id="cancel-vr" style="margin-top: 20px; padding: 10px 20px; cursor: pointer; background: #ff4444; color: white; border: none; border-radius: 4px;">Cancel</button>
-  `;
-  document.body.appendChild(loadingOverlay);
-  
-  // Add spinner animation
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .spinner {
-      width: 50px;
-      height: 50px;
-      border: 5px solid rgba(255,255,255,0.1);
-      border-top: 5px solid #4CAF50;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 20px;
-    }
-    #vr-button {
-      position: fixed;
-      bottom: 40px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 15px 30px;
-      background: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 30px;
-      font-size: 18px;
-      cursor: pointer;
-      z-index: 1000;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-      transition: all 0.3s ease;
-    }
-    #vr-button:hover {
-      background: #45a049;
-      transform: translateX(-50%) translateY(-2px);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-    }
-    #vr-button:disabled {
-      background: #cccccc;
-      cursor: not-allowed;
-    }
-  `;
-  document.head.appendChild(style);
-  
-  // Create menu scene
-  function createMenuScene() {
-    menuScene = new THREE.Scene();
-    
-    // Create a skybox for the menu
-    const skyboxGeometry = new THREE.SphereGeometry(500, 60, 40);
-    const skyboxMaterial = new THREE.MeshBasicMaterial({
-      color: 0x1a1a2e,
-      side: THREE.BackSide
-    });
-    const skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterial);
-    menuScene.add(skybox);
-    
-    // Add menu items (you can customize this)
-    const menuItems = [
-      { text: 'START GAME', y: 1, action: startGame },
-      { text: 'SETTINGS', y: 0, action: showSettings },
-      { text: 'EXIT', y: -1, action: exitToDesktop }
-    ];
-    
-    menuItems.forEach((item, index) => {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      canvas.width = 512;
-      canvas.height = 128;
-      
-      // Draw menu item
-      context.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.font = '48px Arial';
-      context.fillStyle = 'white';
-      context.textAlign = 'center';
-      context.fillText(item.text, canvas.width / 2, 80);
-      
-      const texture = new THREE.CanvasTexture(canvas);
-      const material = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        opacity: 0.8
-      });
-      
-      const geometry = new THREE.PlaneGeometry(2, 0.5);
-      const menuItem = new THREE.Mesh(geometry, material);
-      menuItem.position.set(0, item.y, -2);
-      menuItem.userData = { action: item.action };
-      menuScene.add(menuItem);
-    });
-    
-    // Add ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040);
-    menuScene.add(ambientLight);
-    
-    // Add directional light
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(1, 1, 1);
-    menuScene.add(directionalLight);
-  }
-  
-  // Initialize VR
-  async function initVR() {
-    updateLoadingState('Checking VR support...', 0.2);
-    
-    if (!navigator.xr) {
-      const error = 'WebXR not supported in this browser. Please try Chrome or Firefox Reality.';
-      console.warn(error);
-      updateLoadingState(error, 0);
-      return;
-    }
-    
-    try {
-      // Create menu scene first
-      createMenuScene();
-      
-      // Check if WebXR is available
-      updateLoadingState('Initializing VR...', 0.4);
-      const isSupported = await navigator.xr.isSessionSupported('immersive-vr');
-      if (!isSupported) {
-        throw new Error('WebXR not supported on this device');
-      }
-      
-      // Enable WebXR
-      updateLoadingState('Setting up VR environment...', 0.6);
-      renderer.xr.enabled = true;
-      
-      // Add VR button
-      updateLoadingState('Preparing interface...', 0.8);
-      const vrButton = document.createElement('button');
-      vrButton.id = 'vr-button';
-      vrButton.textContent = 'ENTER VR';
-      document.body.appendChild(vrButton);
-      
-      // VR session start/end handlers
-      vrButton.addEventListener('click', async () => {
-        try {
-          showLoading('Starting VR session...');
-          vrButton.disabled = true;
-          
-          // Request VR session with required features
-          vrSession = await navigator.xr.requestSession('immersive-vr', {
-            optionalFeatures: ['local-floor', 'bounded-floor'],
-            requiredFeatures: ['local-floor']
-          });
-          
-          await renderer.xr.setSession(vrSession);
-          isInVR = true;
-          vrButton.style.display = 'none';
-          
-          // Set up VR controls
-          setupVRControls();
-          
-          // Show menu in VR
-          showVRMenu();
-          
-          // Start animation loop
-          renderer.setAnimationLoop(animateVR);
-          
-          vrSession.addEventListener('end', () => {
-            isInVR = false;
-            vrSession = null;
-            vrButton.style.display = 'block';
-            vrButton.disabled = false;
-            renderer.setAnimationLoop(null);
-            animate(); // Fall back to regular animation loop
-            hideLoading();
-          });
-          
-          hideLoading();
-        } catch (err) {
-          console.error('VR session failed:', err);
-          updateLoadingState('Failed to start VR: ' + err.message, 0, true);
-          const btn = document.getElementById('vr-button');
-          if (btn) btn.disabled = false;
-        }
-      });
-      
-      // Cancel button handler
-      document.getElementById('cancel-vr').addEventListener('click', () => {
-        if (vrSession) {
-          vrSession.end().catch(console.error);
-        } else {
-          hideLoading();
-          const btn = document.getElementById('vr-button');
-          if (btn) btn.disabled = false;
-        }
-      });
-      
-      updateLoadingState('VR ready!', 1);
-      setTimeout(hideLoading, 1000);
-      
-    } catch (err) {
-      console.error('VR initialization failed:', err);
-      updateLoadingState('VR initialization failed: ' + err.message, 0, true);
-    }
-  }
-  
-  // Update loading state
-  function updateLoadingState(message, progress = 0, isError = false) {
-    const textEl = document.getElementById('loading-text');
-    const barEl = document.getElementById('loading-bar');
-    
-    if (textEl) textEl.textContent = message;
-    if (barEl) barEl.style.width = `${Math.max(0, Math.min(100, progress * 100))}%`;
-    
-    if (isError) {
-      textEl.style.color = '#ff6b6b';
-      barEl.style.background = '#ff4444';
-    }
-  }
-  
-  function showLoading(message) {
-    loadingOverlay.style.display = 'flex';
-    updateLoadingState(message, 0);
-  }
-  
-  function hideLoading() {
-    loadingOverlay.style.display = 'none';
-  }
-  
-  // Set up VR controls and controller
-  function setupVRControls() {
-    // Create controller
-    vrController = renderer.xr.getController(0);
-    scene.add(vrController);
-    
-    // Add controller model
-    const controllerModel = renderer.xr.getControllerGrip(0);
-    const geometry = new THREE.BoxGeometry(0.05, 0.05, 0.2);
-    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const controllerMesh = new THREE.Mesh(geometry, material);
-    controllerModel.add(controllerMesh);
-    scene.add(controllerModel);
-    
-    // Controller select/click event
-    vrController.addEventListener('selectstart', onControllerSelect);
-    
-    // Set up VR camera controls
-    vrControls = new THREE.VRControls(camera);
-  }
-  
-  function onControllerSelect() {
-    if (!isInVR || !vrController) return;
-    
-    // Create a raycaster from the controller
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera({ x: 0, y: 0 }, vrController);
-    
-    // Check for menu item intersection
-    if (isInMenu && menuScene) {
-      const intersects = raycaster.intersectObjects(menuScene.children, true);
-      if (intersects.length > 0) {
-        const item = intersects[0].object;
-        if (item.userData.action) {
-          item.userData.action();
-        }
-      }
-    } else {
-      // Handle in-game interactions
-      const direction = new THREE.Vector3();
-      vrController.getWorldDirection(direction);
-      // Add your game interaction logic here
-    }
-  }
-  
-  // Show VR menu
-  function showVRMenu() {
-    isInMenu = true;
-    // Store current scene if coming from game
-    if (!isInMenu) {
-      // Store current game state if needed
-    }
-    
-    // Set up menu camera
-    if (!menuCamera) {
-      menuCamera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-      menuCamera.position.set(0, 1.6, 0);
-    }
-    
-    // Make menu scene active
-    currentScene = menuScene;
-    currentCamera = menuCamera;
-  }
-  
-  // Start the game from VR menu
-  function startGame() {
-    isInMenu = false;
-    // Hide menu and show game
-    currentScene = scene;
-    currentCamera = camera;
-    
-    // Reset player position or load level
-    if (playerBody) {
-      playerBody.position.set(0, 5, 0);
-      playerBody.velocity.set(0, 0, 0);
-    }
-  }
-  
-  // Exit to desktop from VR menu
-  function exitToDesktop() {
-    if (vrSession) {
-      vrSession.end().catch(console.error);
-    }
-  }
-  
-  // VR animation loop
-  function animateVR(timestamp, frame) {
-    if (!isInVR) return;
-    
-    // Update VR controls
-    if (vrControls) {
-      vrControls.update();
-    }
-    
-    // Update the current scene based on game state
-    const currentSceneToRender = isInMenu ? menuScene : scene;
-    const currentCameraToUse = isInMenu ? menuCamera : camera;
-    
-    // Only update game logic if not in menu
-    if (!isInMenu) {
-      const delta = clock.getDelta();
-      
-      // Update player and physics
-      if (updatePlayer) updatePlayer(delta);
-      if (world) world.step(1/60);
-      if (updateMovingConveyors) updateMovingConveyors();
-      
-      // Update VR camera position based on player
-      if (playerBody) {
-        camera.position.copy(playerBody.position);
-        camera.position.y += 1.6; // Eye level
-      }
-    }
-    
-    // Render the appropriate scene
-    if (renderer.xr.isPresenting) {
-      renderer.render(currentSceneToRender, currentCameraToUse);
-    }
-    
-    // Update controller rays
-    if (isInMenu && vrController) {
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera({ x: 0, y: 0 }, vrController);
-      
-      // Highlight menu items on hover
-      if (menuScene) {
-        const intersects = raycaster.intersectObjects(menuScene.children, true);
-        menuScene.traverse((child) => {
-          if (child.material) {
-            child.material.opacity = 0.8;
-            child.material.needsUpdate = true;
-          }
-        });
-        
-        if (intersects.length > 0) {
-          const item = intersects[0].object;
-          if (item.material) {
-            item.material.opacity = 1.0;
-            item.material.needsUpdate = true;
-          }
-        }
-      }
-    }
-  }
-  
-  // Initialize VR when the page loads
-  document.addEventListener('DOMContentLoaded', () => {
-    // Set up initial scene and camera references
-    if (!currentScene) currentScene = scene;
-    if (!currentCamera) currentCamera = camera;
-    
-    // Start VR initialization
-    initVR().catch(err => {
-      console.error('VR initialization error:', err);
-      updateLoadingState('Failed to initialize VR: ' + err.message, 0, true);
-    });
-    
-    // Start the non-VR animation loop
-    animate();
-  });
-  
-  // Handle window resize
-  window.addEventListener('resize', onWindowResize);
-  
-  function onWindowResize() {
-    if (camera) {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-    }
-    if (menuCamera) {
-      menuCamera.aspect = window.innerWidth / window.innerHeight;
-      menuCamera.updateProjectionMatrix();
-    }
-    if (renderer) {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-  }
 </script>
 <script>
   // Initialize FPS counter and OrbitControls when the page loads
