@@ -3185,6 +3185,15 @@
     // Check VR support when the page loads
     window.addEventListener('load', checkVRSupport);
     
+    // VR Controls State
+    const vrControls = {
+      moveX: 0,
+      moveY: 0,
+      jump: false,
+      shift: false,
+      lastButtonState: {}
+    };
+
     // Initialize VR Mode
     async function initVR() {
       try {
@@ -3232,6 +3241,38 @@
         // Setup controller
         vrController = vrRenderer.xr.getController(0);
         vrController.addEventListener('selectstart', onSelectStart);
+        
+        // Add controller input handling
+        vrController.addEventListener('connected', (event) => {
+          const gamepad = event.data.gamepad;
+          // Set up gamepad polling
+          setInterval(() => {
+            if (gamepad.buttons && gamepad.axes) {
+              // Left joystick for movement (axes[2], axes[3] for Quest 2 left controller)
+              vrControls.moveX = gamepad.axes[2] || 0;
+              vrControls.moveY = gamepad.axes[3] || 0;
+              
+              // Trigger for jump (button 0 is usually trigger)
+              vrControls.jump = gamepad.buttons[0]?.pressed || false;
+              
+              // Grip button for shift (button 1 is usually grip)
+              vrControls.shift = gamepad.buttons[1]?.pressed || false;
+              
+              // A/B buttons for jump (buttons 4 and 5 on Quest 2)
+              if (gamepad.buttons[4]?.pressed && !vrControls.lastButtonState['a']) {
+                vrControls.jump = true;
+              }
+              if (gamepad.buttons[5]?.pressed && !vrControls.lastButtonState['b']) {
+                vrControls.jump = true;
+              }
+              
+              // Update button states
+              vrControls.lastButtonState['a'] = gamepad.buttons[4]?.pressed || false;
+              vrControls.lastButtonState['b'] = gamepad.buttons[5]?.pressed || false;
+            }
+          }, 1000/60); // 60fps
+        });
+        
         vrScene.add(vrController);
         
         // Add controller model if available
@@ -3299,22 +3340,62 @@
           console.log('Interacted with:', obj.userData.type);
         }
       }
+      
+      // Handle grip action (shift functionality)
+      if (vrControls.shift) {
+        // Add shift action here (e.g., sprint, scope, etc.)
+        console.log('Grip button pressed');
+      }
     }
     
     function animateVR() {
       if (!vrMode) return;
       
-      // Update VR controls
-      if (vrController) {
-        // Sync physics with VR camera
-        if (playerBody) {
-          playerBody.position.copy(vrCamera.position);
-          playerBody.quaternion.copy(vrCamera.quaternion);
+      const delta = clock.getDelta();
+      
+      // Handle VR movement
+      if (playerBody && vrCamera) {
+        // Get camera forward and right vectors
+        const forward = new THREE.Vector3();
+        const right = new THREE.Vector3();
+        vrCamera.getWorldDirection(forward);
+        right.crossVectors(UP, forward).normalize();
+        
+        // Calculate movement direction based on joystick input
+        const moveDirection = new THREE.Vector3()
+          .add(right.multiplyScalar(vrControls.moveX))
+          .add(forward.multiplyScalar(-vrControls.moveY));
+        
+        // Apply movement
+        moveDirection.y = 0; // Keep movement horizontal
+        moveDirection.normalize().multiplyScalar(10 * delta);
+        
+        // Apply movement to player body
+        if (moveDirection.lengthSq() > 0) {
+          playerBody.velocity.x = moveDirection.x * 10;
+          playerBody.velocity.z = moveDirection.z * 10;
+        } else {
+          // Apply friction when not moving
+          playerBody.velocity.x *= 0.9;
+          playerBody.velocity.z *= 0.9;
         }
+        
+        // Handle jumping
+        if (vrControls.jump && playerBody.velocity.y === 0) {
+          playerBody.velocity.y = 15;
+        }
+        
+        // Update player position to match VR camera (head position)
+        const headHeight = 1.6; // Adjust based on your player height
+        playerBody.position.x = vrCamera.position.x;
+        playerBody.position.z = vrCamera.position.z;
+        playerBody.position.y = Math.max(0, vrCamera.position.y - headHeight);
+        
+        // Update camera position to match player body
+        vrCamera.position.y = playerBody.position.y + headHeight;
       }
       
       // Update physics
-      const delta = clock.getDelta();
       if (world) world.step(1/60, delta, 3);
       
       // Update objects
@@ -3328,6 +3409,12 @@
       
       // Update VFX
       updateVFX(delta);
+      
+      // Update camera based on VR headset
+      if (vrCamera) {
+        const cameraPosition = vrCamera.position.clone();
+        // Update any camera-relative effects here
+      }
       
       // Render the scene
       vrRenderer.render(vrScene, vrCamera);
