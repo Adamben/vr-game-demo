@@ -3125,13 +3125,8 @@
 
     // --- VR Mode Setup ---
     let vrMode = false;
-    let vrRenderer, vrScene, vrCamera, vrController, gamepad;
-    let animationId;
-    let vrMoveDirection = new THREE.Vector3();
-    let vrJumpPressed = false;
-    let vrShiftPressed = false;
-    let vrMoveSpeed = 5.0;
-    let vrJumpForce = 10.0;
+    let vrRenderer, vrScene, vrCamera, vrController;
+    let animationId; // To store the main game animation frame ID
     
     // Get the VR menu button
     const vrButton = document.getElementById('vrMenuButton');
@@ -3206,65 +3201,102 @@
         vrRenderer.xr.enabled = true;
         vrContainer.appendChild(vrRenderer.domElement);
         
-        // Create a new scene for VR with the same background as main menu
-        vrScene = scene.clone();
+        // Create a new scene for VR with menu background
+        vrScene = new THREE.Scene();
+        vrScene.background = new THREE.Color(0x000000); // Black background
         
         // Setup camera
         vrCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         vrCamera.position.set(0, 1.6, 0); // Eye level height
-        
-        // Clone the main menu into VR
-        const menuClone = document.getElementById('homeMenu').cloneNode(true);
-        menuClone.style.position = 'absolute';
-        menuClone.style.top = '0';
-        menuClone.style.left = '0';
-        menuClone.style.width = '100%';
-        menuClone.style.height = '100%';
-        menuClone.style.pointerEvents = 'none';
-        vrContainer.appendChild(menuClone);
-        
-        // Position menu in 3D space
-        const menuPlane = new THREE.Mesh(
-          new THREE.PlaneGeometry(10, 10),
-          new THREE.MeshBasicMaterial({ 
-            color: 0x000000,
-            transparent: true,
-            opacity: 0.7
-          })
-        );
-        menuPlane.position.set(0, 1.6, -2);
-        menuPlane.lookAt(0, 1.6, -3);
-        vrScene.add(menuPlane);
         
         // Add lights
         const light = new THREE.HemisphereLight(0xffffff, 0x444444);
         light.position.set(0, 1, 0);
         vrScene.add(light);
         
-        // Add directional light for better visibility
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(0.5, 1, 0.5);
-        vrScene.add(dirLight);
+        // Add menu elements to VR scene
+        const menuGroup = new THREE.Group();
         
-        // Add floor
-        const floorGeometry = new THREE.PlaneGeometry(20, 20);
-        const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        vrScene.add(floor);
-        
-        // Clone the main game scene into VR
-        scene.traverse(child => {
-          if (child !== camera && child !== renderer) {
-            const clone = child.clone();
-            vrScene.add(clone);
-          }
+        // Create menu panel
+        const menuGeometry = new THREE.PlaneGeometry(8, 6);
+        const menuMaterial = new THREE.MeshBasicMaterial({ 
+          color: 0x111111,
+          transparent: true,
+          opacity: 0.8,
+          side: THREE.DoubleSide
         });
+        const menuPanel = new THREE.Mesh(menuGeometry, menuMaterial);
+        menuPanel.position.z = -3;
+        menuPanel.position.y = 1.4;
+        menuGroup.add(menuPanel);
+        
+        // Add menu title
+        const titleGeometry = new THREE.PlaneGeometry(7, 0.8);
+        const titleMaterial = new THREE.MeshBasicMaterial({ 
+          color: 0x4a00e0,
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide
+        });
+        const titlePanel = new THREE.Mesh(titleGeometry, titleMaterial);
+        titlePanel.position.y = 2.5;
+        titlePanel.position.z = -3;
+        menuGroup.add(titlePanel);
+        
+        // Add menu items
+        const menuItems = [
+          { text: 'Start Game', action: startGame },
+          { text: 'Load Custom Level', action: showCustomLevelInput },
+          { text: 'Level Hub', action: showLevelHub },
+          { text: 'Stock Market', action: showStockMarket },
+          { text: 'Shop', action: showShop }
+        ];
+        
+        menuItems.forEach((item, index) => {
+          const itemGeometry = new THREE.PlaneGeometry(6, 0.6);
+          const itemMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x333333,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide
+          });
+          
+          const menuItem = new THREE.Mesh(itemGeometry, itemMaterial);
+          menuItem.position.y = 1.5 - (index * 0.7);
+          menuItem.position.z = -3;
+          menuItem.userData = { action: item.action };
+          menuGroup.add(menuItem);
+          
+          // Add text to menu item
+          const loader = new THREE.TextureLoader();
+          const textCanvas = document.createElement('canvas');
+          const context = textCanvas.getContext('2d');
+          textCanvas.width = 512;
+          textCanvas.height = 128;
+          context.fillStyle = '#ffffff';
+          context.font = 'Bold 48px Arial';
+          context.fillText(item.text, 10, 80);
+          
+          const textTexture = new THREE.CanvasTexture(textCanvas);
+          const textMaterial = new THREE.MeshBasicMaterial({ 
+            map: textTexture,
+            transparent: true,
+            side: THREE.DoubleSide
+          });
+          
+          const textGeometry = new THREE.PlaneGeometry(5, 0.5);
+          const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+          textMesh.position.set(0, 0, 0.1);
+          menuItem.add(textMesh);
+        });
+        
+        vrScene.add(menuGroup);
         
         // Setup controller
         vrController = vrRenderer.xr.getController(0);
         vrController.addEventListener('selectstart', onSelectStart);
+        vrController.addEventListener('squeezestart', onSqueezeStart);
+        vrController.addEventListener('squeezeend', onSqueezeEnd);
         vrScene.add(vrController);
         
         // Add controller model if available
@@ -3274,6 +3306,9 @@
           controllerGrip.add(controllerModelFactory.createControllerModel(controllerGrip));
           vrScene.add(controllerGrip);
         }
+        
+        // Set up game state for VR
+        isInMenu = true;
         
         // Start VR session
         document.getElementById('vr-status').textContent = 'Starting VR session...';
@@ -3308,117 +3343,103 @@
       }
     }
     
+    // Handle controller trigger press (jump)
     function onSelectStart() {
       if (!vrMode) return;
       
-      // Create a ray from the controller
+      if (!isInMenu) {
+        // In-game: Jump
+        if (canJump) {
+          playerBody.velocity.y = 10;
+          canJump = false;
+          playSound('jumpSound');
+        }
+        return;
+      }
+      
+      // In menu: Handle menu selection
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera({ x: 0, y: 0 }, vrController);
       
-      // Check for intersections with objects in the scene
       const intersects = raycaster.intersectObjects(vrScene.children, true);
       
-      if (intersects.length > 0) {
-        // Handle interaction with objects
-        const obj = intersects[0].object;
-        
-        // Simulate click on menu items
+      for (let i = 0; i < intersects.length; i++) {
+        const obj = intersects[i].object.parent; // Get the parent menu item
         if (obj.userData && obj.userData.action) {
+          // Animate button press
+          obj.scale.set(0.95, 0.95, 0.95);
+          setTimeout(() => { obj.scale.set(1, 1, 1); }, 100);
+          
+          // Execute the action
           obj.userData.action();
-        }
-        // Handle game interactions
-        else if (obj.userData && obj.userData.type) {
-          // Add your VR interaction logic here based on object type
-          console.log('Interacted with:', obj.userData.type);
+          break;
         }
       }
     }
     
-    function handleVRControllerInput() {
-      if (!vrMode || !vrController) return;
-      
-      // Get the gamepad
-      const session = vrRenderer.xr.getSession();
-      if (!session) return;
-      
-      // Get the first gamepad (left controller)
-      const gamepads = navigator.getGamepads();
-      const gamepad = Array.from(gamepads).find(g => g && g.id.includes('Oculus'));
-      if (!gamepad) return;
-      
-      // Left stick movement (axes 2,3)
-      const xAxis = gamepad.axes[2] || 0;
-      const zAxis = gamepad.axes[3] || 0;
-      
-      // Get controller orientation
-      const controllerQuat = new THREE.Quaternion();
-      vrController.getWorldQuaternion(controllerQuat);
-      
-      // Calculate movement direction based on controller orientation
-      const moveDirection = new THREE.Vector3(xAxis, 0, zAxis);
-      moveDirection.applyQuaternion(controllerQuat);
-      moveDirection.y = 0; // Keep movement horizontal
-      moveDirection.normalize();
-      
-      // Apply movement to player
-      if (playerBody) {
-        // Move player
-        playerBody.velocity.x = moveDirection.x * vrMoveSpeed;
-        playerBody.velocity.z = moveDirection.z * vrMoveSpeed;
-        
-        // Jump with trigger or A/B buttons (buttons 0,1,4)
-        const trigger = gamepad.buttons[0]?.pressed || false;
-        const aButton = gamepad.buttons[4]?.pressed || false;
-        const bButton = gamepad.buttons[1]?.pressed || false;
-        
-        if ((trigger || aButton || bButton) && !vrJumpPressed) {
-          if (playerBody.velocity.y < 0.1 && playerBody.velocity.y > -0.1) {
-            playerBody.velocity.y = vrJumpForce;
-            playSound('jumpSound');
-          }
-          vrJumpPressed = true;
-        } else if (!trigger && !aButton && !bButton) {
-          vrJumpPressed = false;
-        }
-        
-        // Shift with squeeze trigger (button 5)
-        const squeezeButton = gamepad.buttons[5]?.pressed || false;
-        if (squeezeButton && !vrShiftPressed) {
-          inScope = true;
-          crosshairEl.style.display = 'block';
-          vrShiftPressed = true;
-        } else if (!squeezeButton && vrShiftPressed) {
-          inScope = false;
-          crosshairEl.style.display = 'none';
-          vrShiftPressed = false;
-        }
-      }
+    // Handle grip button (shift/sprint)
+    function onSqueezeStart() {
+      if (!vrMode || isInMenu) return;
+      isSprinting = true;
+      moveSpeed = 0.2; // Sprint speed
+    }
+    
+    function onSqueezeEnd() {
+      if (!vrMode || isInMenu) return;
+      isSprinting = false;
+      moveSpeed = 0.1; // Normal speed
     }
     
     function animateVR() {
       if (!vrMode) return;
       
-      // Handle controller input
-      handleVRControllerInput();
+      // Get VR frame data
+      const session = vrRenderer.xr.getSession();
+      if (!session) return;
+      
+      const referenceSpace = renderer.xr.getReferenceSpace();
+      
+      // Update VR controls
+      if (vrController && !isInMenu) {
+        // Get controller input for movement
+        const gamepads = navigator.getGamepads();
+        const gamepad = gamepads[0]; // Left controller
+        
+        if (gamepad && gamepad.axes && gamepad.axes.length >= 2) {
+          // Left stick for movement (X and Z axes)
+          const xAxis = gamepad.axes[2];
+          const zAxis = gamepad.axes[3];
+          
+          // Get controller orientation
+          const controllerQuat = new THREE.Quaternion();
+          vrController.getWorldQuaternion(controllerQuat);
+          
+          // Create movement vector based on controller orientation
+          const moveDirection = new THREE.Vector3(xAxis, 0, -zAxis);
+          moveDirection.applyQuaternion(controllerQuat);
+          moveDirection.y = 0; // Keep movement horizontal
+          moveDirection.normalize();
+          
+          // Apply movement to player
+          if (moveDirection.length() > 0.1) {
+            playerBody.velocity.x = moveDirection.x * (isSprinting ? 10 : 5);
+            playerBody.velocity.z = moveDirection.z * (isSprinting ? 10 : 5);
+          } else {
+            // Apply damping when not moving
+            playerBody.velocity.x *= 0.9;
+            playerBody.velocity.z *= 0.9;
+          }
+          
+          // Update camera position to follow player
+          if (playerBody) {
+            vrCamera.position.lerp(playerBody.position, 0.1);
+          }
+        }
+      }
       
       // Update physics
       const delta = clock.getDelta();
       if (world) world.step(1/60, delta, 3);
-      
-      // Update player position to match VR camera
-      if (playerBody) {
-        // Keep player physics body slightly below camera for better feel
-        const cameraPos = vrCamera.position.clone();
-        cameraPos.y -= 0.5; // Adjust this value to match your player height
-        
-        // Smoothly move the player body
-        const deltaPos = cameraPos.clone().sub(playerBody.position);
-        playerBody.velocity.x = deltaPos.x * 10;
-        playerBody.velocity.z = deltaPos.z * 10;
-        
-        // Update camera position based on physics
-        vrCamera.position.y = playerBody.position.y + 0.5;
-      }
       
       // Update objects
       objects.forEach(obj => {
