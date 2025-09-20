@@ -1571,7 +1571,7 @@
           const horizontalDist = Math.sqrt(dx*dx + dz*dz);
           if (horizontalDist < 1 && playerBody.position.y >= obj.mesh.position.y + (BLOCK_SIZE/2) - 0.2) {
             playerBody.velocity.y = 15;
-            showDebugMessage("Boost activated!");
+            showDebugMessage("");
             playSound('boostSound');
           }
         }
@@ -1667,7 +1667,7 @@
           if (horizontalDist < 1 && playerBody.position.y >= obj.mesh.position.y + (BLOCK_SIZE/2) - 0.2) {
             obj.activated = true;
             obj.mesh.material.color.set(0x8B4513);
-            showDebugMessage("Sand block activated!");
+            showDebugMessage("");
             
             // Check for adjacent ice blocks and start the reaction
             const sandPos = obj.mesh.position;
@@ -1877,7 +1877,7 @@
       playerBody.position.set(0, 2, 0);
       playerBody.velocity.set(0, 0, 0);
       checkpointPosition = null;
-      showDebugMessage(`Level ${idx+1} loaded!`);
+      showDebugMessage(`Level Start`);
       showLevelStartText();
     }
     function markLevelComplete(idx) {
@@ -3771,7 +3771,7 @@
                   if (downDot > 0.35){
                     playerBody.velocity.y = Math.max(playerBody.velocity.y, 6.5);
                     inventory.ammo--; updateInventoryDisplay();
-                    showDebugMessage('Ground boost!');
+                    showDebugMessage('');
                     playSound('boostSound');
                     try{ triggerShake(0.35, 180); screenFlash('#ffffff', 120, 0.35); }catch(_){ }
                     emitDustAt(new THREE.Vector3(h.point.x, h.point.y+0.1, h.point.z), 1.2);
@@ -3833,7 +3833,7 @@
       playerBody.position.set(0, 2, 0);
       playerBody.velocity.set(0, 0, 0);
       checkpointPosition = null;
-      showDebugMessage(`Level ${idx+1} loaded!`);
+      showDebugMessage(`Level Start`);
       showLevelStartText();
     }
     // Also show on custom level load
