@@ -2,532 +2,585 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>VR Orbit - Three + cannon-es</title>
+  <title>VR Orbit - Three + cannon-es (Updated)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     body { margin:0; overflow:hidden; font-family: sans-serif; }
     #info {
       position: absolute; left: 10px; top: 10px; padding:8px 12px;
-      background: rgba(0,0,0,0.4); color: #fff; border-radius:6px;
+      background: rgba(0,0,0,0.45); color: #fff; border-radius:6px; max-width: 340px;
     }
-    button { font-size: 14px; }
-    canvas { display:block; }
+    #hint { font-size:12px; opacity:0.9; margin-top:6px; }
   </style>
 </head>
 <body>
   <div id="info">
-    VR: use your headset & thumbstick to move. Grab with controller (squeeze/select).<br>
-    Desktop: WASD to move, mouse to look, E to grab nearest object, Space to jump.
+    Controls:
+    <ul>
+      <li>VR: thumbstick to move, click thumbstick to teleport to pointed ground, trigger = blaster, squeeze/select = grab.</li>
+      <li>Desktop: WASD to move, mouse to look (click to lock), E = grab, Space = jump, X = add block, H = toggle hand mode.</li>
+    </ul>
+    <div id="hint">Hand tracking toggled: <span id="handState">off</span></div>
   </div>
 
   <script type="module">
-  // ---- Imports (three r128 module + VRButton) + cannon-es ----
   import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
   import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/webxr/VRButton.js';
   import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
 
-  // ---- Basic three scene ----
+  // Basic three + renderer + xr
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x101218);
-
+  scene.background = new THREE.Color(0x0b0f14);
   const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1000);
-
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
   renderer.setSize(innerWidth, innerHeight);
-  renderer.shadowMap.enabled = true;
   renderer.xr.enabled = true;
+  renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
   document.body.appendChild(VRButton.createButton(renderer));
 
-  // lighting
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-  hemi.position.set(0, 10, 0);
+  // Light
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
+  hemi.position.set(0,10,0);
   scene.add(hemi);
-
-  const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.6);
   dir.position.set(5,10,7);
   dir.castShadow = true;
-  dir.shadow.mapSize.set(1024,1024);
   scene.add(dir);
 
-  // camera rig (so we can move the camera + controllers together)
+  // Rig (player)
   const rig = new THREE.Group();
   rig.add(camera);
   scene.add(rig);
 
-  // ---- Cannon world ----
-  const world = new CANNON.World({
-    gravity: new CANNON.Vec3(0, -9.82, 0),
-  });
-  // Broadphase and solver tuning
+  // Cannon world
+  const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
   world.broadphase = new CANNON.SAPBroadphase(world);
   world.solver.iterations = 10;
-
-  // material contact
   const defaultMat = new CANNON.Material('default');
-  const contactMat = new CANNON.ContactMaterial(defaultMat, defaultMat, { friction: 0.4, restitution: 0.1 });
-  world.addContactMaterial(contactMat);
+  world.addContactMaterial(new CANNON.ContactMaterial(defaultMat, defaultMat, { friction:0.4, restitution:0.1 }));
 
-  // ----- Ground -----
-  const groundGeo = new THREE.PlaneGeometry(50,50);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x2a2f36 });
-  const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+  // Ground
+  const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.MeshStandardMaterial({ color: 0x2a2f36 }));
   groundMesh.rotation.x = -Math.PI/2;
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
-
-  const groundBody = new CANNON.Body({
-    type: CANNON.Body.STATIC,
-    shape: new CANNON.Plane(),
-    material: defaultMat
-  });
-  groundBody.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+  const groundBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Plane(), material: defaultMat });
+  groundBody.quaternion.setFromEuler(-Math.PI/2,0,0);
   world.addBody(groundBody);
 
-  // ---- central cube (static) ----
-  const centralGeo = new THREE.BoxGeometry(1,1,1);
-  const centralMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-  const centralMesh = new THREE.Mesh(centralGeo, centralMat);
-  centralMesh.castShadow = true;
-  centralMesh.position.set(0,0.5,0);
-  scene.add(centralMesh);
-
-  // central cube physics (static)
-  const centralBody = new CANNON.Body({
-    type: CANNON.Body.STATIC,
-    shape: new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5)),
-    position: new CANNON.Vec3(0,0.5,0),
-    material: defaultMat
-  });
+  // Central cube (static)
+  const centralMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshStandardMaterial({ color:0xff0000 }));
+  centralMesh.position.set(0,0.5,0); centralMesh.castShadow = true; scene.add(centralMesh);
+  const centralBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5)), position: new CANNON.Vec3(0,0.5,0), material:defaultMat });
   world.addBody(centralBody);
 
-  // ---- orbiting sphere (dynamic, but we'll apply a motorized orbit force) ----
-  const sphereGeo = new THREE.SphereGeometry(0.4, 32, 32);
-  const sphereMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, metalness:0.2, roughness:0.6 });
-  const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
-  sphereMesh.castShadow = true;
-  scene.add(sphereMesh);
-
-  const sphereBody = new CANNON.Body({
-    mass: 1,
-    shape: new CANNON.Sphere(0.4),
-    position: new CANNON.Vec3(2, 1, 0),
-    material: defaultMat
-  });
+  // Orbiting sphere (dynamic, motorized)
+  const sphereMesh = new THREE.Mesh(new THREE.SphereGeometry(0.4,32,32), new THREE.MeshStandardMaterial({ color:0x00ff00 }));
+  sphereMesh.castShadow = true; scene.add(sphereMesh);
+  const sphereBody = new CANNON.Body({ mass:1, shape: new CANNON.Sphere(0.4), position: new CANNON.Vec3(2,1,0), material:defaultMat });
   world.addBody(sphereBody);
 
-  // ---- extra boxes to interact with ----
+  // Interactables arrays
   const interactMeshes = [];
   const interactBodies = [];
-  function spawnBox(x,y,z,color=0x3377ff) {
+  function spawnBox(x,y,z,color=0x3377ff, mass=2) {
     const geo = new THREE.BoxGeometry(0.6,0.6,0.6);
     const mat = new THREE.MeshStandardMaterial({ color });
-    const m = new THREE.Mesh(geo, mat);
-    m.castShadow = true;
-    m.position.set(x,y,z);
-    scene.add(m);
-    interactMeshes.push(m);
-
-    const b = new CANNON.Body({
-      mass: 2,
-      shape: new CANNON.Box(new CANNON.Vec3(0.3,0.3,0.3)),
-      position: new CANNON.Vec3(x,y,z),
-      material: defaultMat
-    });
-    world.addBody(b);
-    interactBodies.push(b);
+    const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.position.set(x,y,z); scene.add(m); interactMeshes.push(m);
+    const b = new CANNON.Body({ mass, shape: new CANNON.Box(new CANNON.Vec3(0.3,0.3,0.3)), position: new CANNON.Vec3(x,y,z), material:defaultMat });
+    world.addBody(b); interactBodies.push(b);
     return { m, b };
   }
 
-  spawnBox(1.5, 1, -1, 0x4488ff);
-  spawnBox(-1.5, 1, -1, 0xffaa33);
-  spawnBox(0, 2, -2, 0x00ffaa);
+  // place 2 static blocks as requested
+  // static block 1
+  const staticBlock1 = new THREE.Mesh(new THREE.BoxGeometry(1.5,0.75,1.5), new THREE.MeshStandardMaterial({ color:0x4444aa }));
+  staticBlock1.position.set(-3,0.375,-1.5); staticBlock1.receiveShadow = true; scene.add(staticBlock1);
+  const staticBody1 = new CANNON.Body({ type:CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(0.75,0.375,0.75)), position: new CANNON.Vec3(-3,0.375,-1.5), material:defaultMat });
+  world.addBody(staticBody1);
 
-  // ---- Player collider/body (simple sphere) ----
-  const playerBody = new CANNON.Body({
-    mass: 1,
-    shape: new CANNON.Sphere(0.35),
-    position: new CANNON.Vec3(0, 1.0, 5),
-    fixedRotation: true,
-    material: defaultMat
-  });
-  // allow sliding
-  playerBody.linearDamping = 0.9;
-  world.addBody(playerBody);
+  // static block 2
+  const staticBlock2 = new THREE.Mesh(new THREE.BoxGeometry(1.2,1.2,0.8), new THREE.MeshStandardMaterial({ color:0xaa4444 }));
+  staticBlock2.position.set(3,0.6,-2); staticBlock2.receiveShadow = true; scene.add(staticBlock2);
+  const staticBody2 = new CANNON.Body({ type:CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(0.6,0.6,0.4)), position: new CANNON.Vec3(3,0.6,-2), material:defaultMat });
+  world.addBody(staticBody2);
 
-  // small invisible mesh to help debug (optional)
-  const playerDebug = new THREE.Mesh(
-    new THREE.SphereGeometry(0.35, 8, 8),
-    new THREE.MeshBasicMaterial({ visible:false })
-  );
-  scene.add(playerDebug);
+  // a few interactive boxes
+  spawnBox(1.5,1,-1,0x4488ff);
+  spawnBox(-1.5,1,-1,0xffaa33);
+  spawnBox(0,2,-2,0x00ffaa);
 
-  // attach camera to player: camera offset
-  const cameraHeight = 0.6; // where camera sits relative to player body center
+  // Player body (capsule-ish using sphere for simplicity)
+  const playerBody = new CANNON.Body({ mass:1, shape: new CANNON.Sphere(0.35), position: new CANNON.Vec3(0,1.0,5), fixedRotation:true, material:defaultMat });
+  playerBody.linearDamping = 0.9; world.addBody(playerBody);
 
-  // ---- Simple player movement state ----
+  // helper meshes
+  const sphereDebug = new THREE.Mesh(new THREE.SphereGeometry(0.35,8,8), new THREE.MeshBasicMaterial({ visible:false }));
+  scene.add(sphereDebug);
+
+  // movement
   const moveState = { forward:0, right:0, jump:false };
   const speed = 3.0;
   let canJump = false;
-
-  // keyboard controls (desktop fallback)
   const keys = {};
-  window.addEventListener('keydown', (e) => {
+  window.addEventListener('keydown', e => {
     keys[e.code] = true;
     if (e.code === 'KeyW') moveState.forward = 1;
     if (e.code === 'KeyS') moveState.forward = -1;
     if (e.code === 'KeyA') moveState.right = -1;
     if (e.code === 'KeyD') moveState.right = 1;
     if (e.code === 'Space') moveState.jump = true;
-    if (e.code === 'KeyE') tryGrabNearest(); // desktop grab
+    if (e.code === 'KeyE') tryGrabNearest();
+    if (e.code === 'KeyX') spawnInFront();
+    if (e.code === 'KeyH') toggleHandMode();
   });
-  window.addEventListener('keyup', (e) => {
+  window.addEventListener('keyup', e => {
     keys[e.code] = false;
     if (!keys['KeyW'] && !keys['KeyS']) moveState.forward = 0;
     if (!keys['KeyA'] && !keys['KeyD']) moveState.right = 0;
     if (e.code === 'Space') moveState.jump = false;
   });
 
-  // ---- Mouse look for non-VR mode ----
-  let yaw = 0, pitch = 0;
-  let pointerLocked = false;
-  function pointerMove(e){
+  // mouse look for desktop
+  let yaw = 0, pitch = 0, pointerLocked = false;
+  document.addEventListener('mousemove', e => {
     if (!pointerLocked) return;
-    const sensitivity = 0.002;
+    const sensitivity = 0.0025;
     yaw -= e.movementX * sensitivity;
     pitch -= e.movementY * sensitivity;
     pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, pitch));
-  }
-  document.addEventListener('mousemove', pointerMove);
-  document.addEventListener('click', () => {
-    if (!navigator.xr) {
-      // request pointer lock on desktop to fly/look
-      renderer.domElement.requestPointerLock?.();
-    }
   });
-  document.addEventListener('pointerlockchange', () => {
-    pointerLocked = document.pointerLockElement === renderer.domElement;
-  });
+  document.addEventListener('click', () => renderer.domElement.requestPointerLock?.());
+  document.addEventListener('pointerlockchange', () => pointerLocked = document.pointerLockElement === renderer.domElement);
 
-  // ---- VR controllers ----
+  // controllers
   const controller1 = renderer.xr.getController(0);
   const controller2 = renderer.xr.getController(1);
-  scene.add(controller1);
-  scene.add(controller2);
+  controller1.add(new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.02,0.15,8), new THREE.MeshNormalMaterial()));
+  controller2.add(new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.02,0.15,8), new THREE.MeshNormalMaterial()));
+  scene.add(controller1); scene.add(controller2);
 
-  // add ray visuals for controllers
-  function makeControllerMesh() {
-    const g = new THREE.CylinderGeometry(0.01, 0.02, 0.15, 8);
-    const m = new THREE.Mesh(g, new THREE.MeshNormalMaterial());
-    m.rotation.x = -Math.PI/2;
-    return m;
+  // hand tracking groups
+  const xrHand0 = renderer.xr.getHand(0);
+  const xrHand1 = renderer.xr.getHand(1);
+  scene.add(xrHand0); scene.add(xrHand1);
+  const handMeshes = [ new THREE.Group(), new THREE.Group() ];
+  // simple spheres for a few joints (thumb tip + index tip + wrist)
+  function makeHandVisual() {
+    const g = new THREE.Group();
+    const wrist = new THREE.Mesh(new THREE.SphereGeometry(0.04,8,8), new THREE.MeshStandardMaterial({ color:0xffccaa }));
+    const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.03,8,8), new THREE.MeshStandardMaterial({ color:0xffeecc }));
+    const index = new THREE.Mesh(new THREE.SphereGeometry(0.03,8,8), new THREE.MeshStandardMaterial({ color:0xccffcc }));
+    g.add(wrist); g.add(thumb); g.add(index);
+    return { group:g, wrist, thumb, index };
   }
-  controller1.add(makeControllerMesh());
-  controller2.add(makeControllerMesh());
+  const hv0 = makeHandVisual(); const hv1 = makeHandVisual();
+  handMeshes[0].add(hv0.group); handMeshes[1].add(hv1.group);
+  scene.add(handMeshes[0]); scene.add(handMeshes[1]);
 
-  // track active grab constraints
-  const grabConstraints = new Map(); // controller -> { constraint, body }
+  // grab constraints map: controller/hand -> { constraint, ctrlBody, targetBody }
+  const grabConstraints = new Map();
 
-  // helper: raycast from controller to find nearest dynamic body
-  function controllerRaycast(controller) {
-    const tempMatrix = new THREE.Matrix4();
-    tempMatrix.identity().extractRotation(controller.matrixWorld);
-
-    const origin = new THREE.Vector3();
-    controller.getWorldPosition(origin);
-
-    const direction = new THREE.Vector3(0,0,-1).applyMatrix4(tempMatrix).normalize();
-
-    // simple intersection: test distance to bounding spheres of dynamic bodies
-    let best = null;
-    let bestDist = 999;
-    const maxDist = 2.5;
+  // helper: controller raycast against dynamic bodies
+  function controllerRaycastFrom(controller) {
+    const temp = new THREE.Matrix4(); temp.identity().extractRotation(controller.matrixWorld);
+    const origin = new THREE.Vector3(); controller.getWorldPosition(origin);
+    const direction = new THREE.Vector3(0,0,-1).applyMatrix4(temp).normalize();
+    let best=null; let bestDist=999; const maxDist=6;
     for (let b of [sphereBody, ...interactBodies]) {
       if (b.type === CANNON.Body.STATIC) continue;
       const pos = new THREE.Vector3(b.position.x, b.position.y, b.position.z);
       const to = pos.clone().sub(origin);
       const proj = to.dot(direction);
       if (proj < 0 || proj > maxDist) continue;
-      const perpDist = to.clone().sub(direction.clone().multiplyScalar(proj)).length();
-      const radius = b.shapes[0] instanceof CANNON.Sphere ? b.shapes[0].radius : 0.5;
-      if (perpDist <= radius + 0.15) {
-        if (proj < bestDist) { bestDist = proj; best = { body: b, hitPoint: origin.clone().add(direction.clone().multiplyScalar(proj)) }; }
+      const perp = to.clone().sub(direction.clone().multiplyScalar(proj)).length();
+      const radius = (b.shapes[0] instanceof CANNON.Sphere) ? b.shapes[0].radius : 0.35;
+      if (perp <= radius+0.12) {
+        if (proj < bestDist) { bestDist = proj; best = { body:b, hitPoint: origin.clone().add(direction.clone().multiplyScalar(proj)), dist:proj }; }
       }
     }
     return best;
   }
 
-  // on selectstart, try to grab object
-  function onSelectStart() {
-    const controller = this;
-    const hit = controllerRaycast(controller);
-    if (!hit) return;
-    const body = hit.body;
-
-    // convert hitPoint to local world vector for cannon pivot
-    const pivot = new CANNON.Vec3().copy(hit.hitPoint);
-    // create a new body for the controller (kinematic) and a PointToPointConstraint
-    // Instead of creating another body, we'll use a kinematic body representing controller position
-    const ctrlBody = new CANNON.Body({ mass: 0 }); // kinematic / static
-    ctrlBody.type = CANNON.Body.KINEMATIC;
-    ctrlBody.position.copy(new CANNON.Vec3().copy(controller.position).vadd(new CANNON.Vec3(0,0,0)));
-    world.addBody(ctrlBody);
-
-    const constraint = new CANNON.PointToPointConstraint(body, body.pointToLocalFrame(pivot), ctrlBody, new CANNON.Vec3(0,0,0));
-    world.addConstraint(constraint);
-
-    grabConstraints.set(controller, { constraint, ctrlBody, targetBody: body });
+  // ---- Blaster (trigger): fires impulse to hit body or spawn projectile ----
+  function blasterFireFrom(controller) {
+    const hit = controllerRaycastFrom(controller);
+    const forward = new THREE.Vector3(0,0,-1).applyQuaternion(controller.quaternion).normalize();
+    if (hit) {
+      // apply impulse to hit body at hitPoint
+      const impulse = new CANNON.Vec3(forward.x, forward.y, forward.z).scale(6);
+      hit.body.applyImpulse(impulse, new CANNON.Vec3(hit.body.position.x, hit.body.position.y, hit.body.position.z));
+    } else {
+      // spawn a small fast projectile
+      const pGeo = new THREE.SphereGeometry(0.06,8,8);
+      const pMat = new THREE.MeshStandardMaterial({ color:0xffff88 });
+      const pMesh = new THREE.Mesh(pGeo, pMat); pMesh.castShadow=true; scene.add(pMesh);
+      const worldPos = new THREE.Vector3(); controller.getWorldPosition(worldPos);
+      const spawnPos = worldPos.clone().add(forward.clone().multiplyScalar(0.15));
+      pMesh.position.copy(spawnPos);
+      const pBody = new CANNON.Body({ mass:0.2, shape:new CANNON.Sphere(0.06), position:new CANNON.Vec3(spawnPos.x, spawnPos.y, spawnPos.z), material:defaultMat });
+      const vel = new CANNON.Vec3(forward.x * 18, forward.y * 18, forward.z * 18);
+      pBody.velocity.copy(vel);
+      world.addBody(pBody);
+      // keep track for sync
+      interactMeshes.push(pMesh); interactBodies.push(pBody);
+      // remove projectile after 6s
+      setTimeout(()=> {
+        scene.remove(pMesh);
+        try { world.removeBody(pBody); } catch(e) {}
+      }, 6000);
+    }
   }
 
-  function onSelectEnd() {
-    const controller = this;
+  // grab using PointToPointConstraint
+  function startGrab(controller) {
+    if (grabConstraints.has(controller)) return;
+    const hit = controllerRaycastFrom(controller);
+    if (!hit) return;
+    const body = hit.body;
+    const ctrlBody = new CANNON.Body({ mass:0, type:CANNON.Body.KINEMATIC });
+    const ctrlPos = new THREE.Vector3(); controller.getWorldPosition(ctrlPos);
+    ctrlBody.position.copy(new CANNON.Vec3(ctrlPos.x, ctrlPos.y, ctrlPos.z));
+    world.addBody(ctrlBody);
+    const pivot = body.pointToLocalFrame(new CANNON.Vec3(ctrlPos.x, ctrlPos.y, ctrlPos.z));
+    const constraint = new CANNON.PointToPointConstraint(body, pivot, ctrlBody, new CANNON.Vec3(0,0,0));
+    world.addConstraint(constraint);
+    grabConstraints.set(controller, { constraint, ctrlBody, targetBody: body });
+  }
+  function endGrab(controller) {
     const data = grabConstraints.get(controller);
     if (!data) return;
-    // apply throw impulse based on controller velocity
-    // approximate controller linear velocity by tracking recent positions (simple)
-    // For simplicity, apply a small impulse outward
-    const impulse = new CANNON.Vec3();
-    // get controller forward
+    // apply small throw based on controller forward
     const forward = new THREE.Vector3(0,0,-1).applyQuaternion(controller.quaternion);
-    impulse.set(forward.x, forward.y, forward.z).scale(2.5);
-    data.targetBody.applyImpulse(impulse, data.targetBody.position);
-
+    const imp = new CANNON.Vec3(forward.x, forward.y, forward.z).scale(2.5);
+    data.targetBody.applyImpulse(imp, data.targetBody.position);
     world.removeConstraint(data.constraint);
     world.removeBody(data.ctrlBody);
     grabConstraints.delete(controller);
   }
 
-  // wire events
-  controller1.addEventListener('selectstart', onSelectStart);
-  controller1.addEventListener('selectend', onSelectEnd);
-  controller2.addEventListener('selectstart', onSelectStart);
-  controller2.addEventListener('selectend', onSelectEnd);
-
-  // we also allow "squeezestart"/"squeezeend" as alternates
-  controller1.addEventListener('squeezestart', onSelectStart);
-  controller1.addEventListener('squeezeend', onSelectEnd);
-  controller2.addEventListener('squeezestart', onSelectStart);
-  controller2.addEventListener('squeezeend', onSelectEnd);
-
-  // ---- Utility: find nearest interactable and grab (desktop E) ----
+  // Desktop nearest grab (E)
   function tryGrabNearest() {
-    // pick the nearest dynamic body to player within 2m
-    let best = null; let bd = 999;
+    let best=null, bestDist=999;
     for (let b of [sphereBody, ...interactBodies]) {
       const d = playerBody.position.distanceTo(b.position);
-      if (d < 2 && d < bd) { bd = d; best = b; }
+      if (d < 2 && d < bestDist) { bestDist = d; best = b; }
     }
     if (!best) return;
-    // create a fixed constraint from player to object (simulate hold)
-    const ctrlBody = new CANNON.Body({ mass:0, type: CANNON.Body.KINEMATIC });
-    ctrlBody.position.copy(playerBody.position.vadd(new CANNON.Vec3(0,0.6, -0.7))); // in front of player
+    // temporary attach in front of player
+    const ctrlBody = new CANNON.Body({ mass:0, type:CANNON.Body.KINEMATIC });
+    const camDir = new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ')).normalize();
+    const spawn = new CANNON.Vec3(playerBody.position.x + camDir.x*0.8, playerBody.position.y+0.6, playerBody.position.z + camDir.z*0.8);
+    ctrlBody.position.copy(spawn);
     world.addBody(ctrlBody);
-    const constraint = new CANNON.PointToPointConstraint(best, best.pointToLocalFrame(ctrlBody.position), ctrlBody, new CANNON.Vec3(0,0,0));
+    const constraint = new CANNON.PointToPointConstraint(best, best.pointToLocalFrame(spawn), ctrlBody, new CANNON.Vec3(0,0,0));
     world.addConstraint(constraint);
-    // auto-release after 1.2s for desktop convenience
-    setTimeout(()=> {
-      world.removeConstraint(constraint);
-      world.removeBody(ctrlBody);
-    }, 1200);
+    setTimeout(()=> { try { world.removeConstraint(constraint); world.removeBody(ctrlBody); } catch(e) {} }, 1100);
   }
 
-  // ---- Animation / simulation loop ----
-  let lastTime;
-  const timeStep = 1/60;
+  // spawn a block in front of player/camera (X)
+  function spawnInFront() {
+    // compute forward from camera (desktop uses yaw/pitch)
+    let forward = new THREE.Vector3(0,0,-1);
+    if (renderer.xr.isPresenting) forward.applyQuaternion(camera.quaternion);
+    else forward.applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));
+    const camPos = new THREE.Vector3();
+    if (renderer.xr.isPresenting) camera.getWorldPosition(camPos);
+    else {
+      camPos.set(playerBody.position.x, playerBody.position.y + 0.6, playerBody.position.z);
+    }
+    const pos = camPos.clone().add(forward.clone().multiplyScalar(1.2)).add(new THREE.Vector3(0,0.4,0));
+    spawnBox(pos.x, pos.y, pos.z, 0x66ccff, 2);
+  }
 
-  // For controller kinematic bodies: update their position each frame from controller world positions
-  function updateControllerBodies() {
-    for (const [controller, data] of grabConstraints) {
-      if (!data) continue;
-      // get controller world pos
-      const pos = new THREE.Vector3();
-      controller.getWorldPosition(pos);
-      data.ctrlBody.position.copy(new CANNON.Vec3(pos.x, pos.y, pos.z));
-      // also set quaternion for orientation if needed (not necessary for point-to-point)
-      const quat = new THREE.Quaternion();
-      controller.getWorldQuaternion(quat);
-      data.ctrlBody.quaternion.copy(new CANNON.Quaternion(quat.x, quat.y, quat.z, quat.w));
+  // Teleport: click thumbstick / primary button to teleport to pointed ground
+  // We'll detect button presses on each controller's gamepad
+  const prevBtnState = new Map();
+  function handleTeleportIfRequested(controller) {
+    const gp = controller.gamepad;
+    if (!gp) return;
+    // choose a button index commonly used for thumbstick click (varies by device)
+    // We'll check buttons[3], buttons[2], buttons[1], buttons[0] in that order
+    const indices = [3,2,1,0];
+    for (let idx of indices) {
+      const pressed = !!(gp.buttons[idx] && gp.buttons[idx].pressed);
+      const prev = prevBtnState.get(controller + ':' + idx) || false;
+      if (pressed && !prev) {
+        // on press -> attempt teleport raycast to ground
+        const ray = controllerRay(controller);
+        if (ray) {
+          const hit = raycastGround(ray.origin, ray.direction, 30);
+          if (hit) {
+            // teleport playerBody to hit point keeping height offset
+            playerBody.position.set(hit.x, hit.y + 0.35, hit.z);
+            playerBody.velocity.set(0,0,0);
+          }
+        }
+      }
+      prevBtnState.set(controller + ':' + idx, pressed);
     }
   }
 
-  // helper to sync three meshes with cannon bodies
-  function syncPhysicsToGraphics() {
-    // player camera: set rig position to playerBody and offset camera up
-    rig.position.set(playerBody.position.x, playerBody.position.y + cameraHeight, playerBody.position.z);
-
-    // sphere
-    sphereMesh.position.copy(sphereBody.position);
-    sphereMesh.quaternion.copy(sphereBody.quaternion);
-
-    // central cube and its body handled rarely but keep synced (static)
-    centralMesh.position.copy(centralBody.position);
-    centralMesh.quaternion.copy(centralBody.quaternion);
-
-    // interactables
-    for (let i=0;i<interactMeshes.length;i++){
-      interactMeshes[i].position.copy(interactBodies[i].position);
-      interactMeshes[i].quaternion.copy(interactBodies[i].quaternion);
-    }
-    // debug player (invisible)
-    playerDebug.position.copy(playerBody.position);
+  // helper: make a three ray from controller
+  function controllerRay(controller) {
+    const origin = new THREE.Vector3(); controller.getWorldPosition(origin);
+    const dir = new THREE.Vector3(0,0,-1).applyQuaternion(controller.quaternion).normalize();
+    return { origin, direction: dir };
   }
 
-  // Function to process VR thumbstick movement for each controller
-  function processVRInput() {
-    // for each controller, check gamepad axes
-    const session = renderer.xr.getSession && renderer.xr.getSession();
-    let forward = 0, right = 0;
-    // gather axes from both controllers (some headsets put primary thumbstick on controller[0])
+  // simple ground raycast using Cannon: step along parabola? We'll cast a long ray downward from controller pointing direction until it intersects ground plane
+  function raycastGround(origin, direction, maxDist=40) {
+    // sample along ray (coarse) and find intersection with y=0 plane (ground plane)
+    // solve origin.y + t*dir.y = 0 => t = -origin.y/dir.y
+    if (Math.abs(direction.y) < 1e-4) return null;
+    const t = -origin.y / direction.y;
+    if (t <= 0 || t > maxDist) return null;
+    const hit = origin.clone().add(direction.clone().multiplyScalar(t));
+    return hit;
+  }
+
+  // controller events: selectstart/selectend for grab; squeeze as alternate; trigger (blaster) use "select" in many devices
+  function onSelectStart() { /* not used for blaster; handled via gamepad polling */ }
+  function onSqueezeStart() { startGrab(this); }
+  function onSqueezeEnd() { endGrab(this); }
+
+  controller1.addEventListener('squeezestart', onSqueezeStart);
+  controller1.addEventListener('squeezeend', onSqueezeEnd);
+  controller2.addEventListener('squeezestart', onSqueezeStart);
+  controller2.addEventListener('squeezeend', onSqueezeEnd);
+
+  // For blaster, some browsers emit 'select' when trigger pressed
+  controller1.addEventListener('selectstart', function(){ blasterFireFrom(this); });
+  controller2.addEventListener('selectstart', function(){ blasterFireFrom(this); });
+
+  // Poll gamepad buttons every frame to support blaster (some devices) and teleportation toggles
+  function pollControllerButtons() {
     [controller1, controller2].forEach(controller => {
       const gp = controller.gamepad;
       if (!gp) return;
-      // standard mapping uses gp.axes[2] and [3] for secondary stick; some devices use 0/1
-      // we'll check both common locations
-      const axX = (gp.axes.length > 2 ? gp.axes[2] : gp.axes[0]) || 0;
-      const axY = (gp.axes.length > 3 ? gp.axes[3] : gp.axes[1]) || 0;
-      // forward is -Y
-      forward += -axY;
-      right += axX;
+      // detect when 'X' button is pressed (index 4/3 etc) to spawn blocks using controller
+      // We'll map button index 4 (or 3) -> spawn block on press
+      const spawnIdx = gp.buttons.length > 4 ? 4 : 3;
+      const spawnedKey = 'spawn:' + controller.uuid;
+      const spawnPressed = !!(gp.buttons[spawnIdx] && gp.buttons[spawnIdx].pressed);
+      if (spawnPressed && !prevBtnState.get(spawnedKey)) {
+        // spawn in front of controller
+        const origin = new THREE.Vector3(); controller.getWorldPosition(origin);
+        const forward = new THREE.Vector3(0,0,-1).applyQuaternion(controller.quaternion).normalize();
+        const pos = origin.clone().add(forward.multiplyScalar(1.0));
+        spawnBox(pos.x, pos.y, pos.z, 0xff88ff, 2);
+      }
+      prevBtnState.set(spawnedKey, spawnPressed);
+
+      // handle teleport press
+      handleTeleportIfRequested(controller);
     });
-    // normalize
-    forward = Math.max(-1, Math.min(1, forward));
-    right = Math.max(-1, Math.min(1, right));
-    return { forward, right };
   }
 
-  // apply a simple orbit force to the sphere to keep it orbiting the central cube unless grabbed
+  // Hand-tracking mode toggle and logic
+  let handMode = false;
+  const handStateEl = document.getElementById('handState');
+  function toggleHandMode(on) {
+    handMode = (typeof on === 'boolean') ? on : !handMode;
+    handStateEl.textContent = handMode ? 'on' : 'off';
+    // show/hide controllers vs hand visuals
+    controller1.visible = !handMode;
+    controller2.visible = !handMode;
+    handMeshes[0].visible = handMode; handMeshes[1].visible = handMode;
+  }
+  toggleHandMode(false);
+
+  // If XRHand joints available, update hand sphere positions
+  function updateHands() {
+    // for each hand index 0/1
+    const hands = [xrHand0, xrHand1];
+    for (let i=0;i<2;i++) {
+      const hand = hands[i];
+      const hv = (i===0)? hv0 : hv1;
+      const g = handMeshes[i];
+      // default invisible if no joint
+      g.visible = handMode;
+      if (!handMode) continue;
+      // common joints: 'wrist', 'thumb-tip', 'index-finger-tip' (names vary, use XRHand constants if present)
+      const wristJoint = hand.joints ? hand.joints['wrist'] || hand.joints[0] : null;
+      const thumbTip = hand.joints ? hand.joints['thumb-tip'] || hand.joints['thumb-tip'] : null;
+      const indexTip = hand.joints ? hand.joints['index-finger-tip'] || hand.joints['index-finger-tip'] : null;
+      // fallback: place relative to hand group position/orientation
+      if (wristJoint && wristJoint.matrixWorld) {
+        const pos = new THREE.Vector3(); pos.setFromMatrixPosition(wristJoint.matrixWorld);
+        hv.wrist.position.copy(pos);
+      } else {
+        // small fallback near controller if available
+        const temp = new THREE.Vector3(); hand.getWorldPosition(temp); hv.wrist.position.copy(temp);
+      }
+      if (thumbTip && thumbTip.matrixWorld) {
+        const p = new THREE.Vector3(); p.setFromMatrixPosition(thumbTip.matrixWorld); hv.thumb.position.copy(p);
+      }
+      if (indexTip && indexTip.matrixWorld) {
+        const p = new THREE.Vector3(); p.setFromMatrixPosition(indexTip.matrixWorld); hv.index.position.copy(p);
+      }
+      // If user pinches (distance between thumb and index < threshold) we treat as "grab" and apply a blaster-ish impulse forward
+      try {
+        if (hv.thumb && hv.index) {
+          const d = hv.thumb.position.distanceTo(hv.index.position);
+          if (d < 0.04) {
+            // find nearby dynamic body and apply small impulse
+            let best=null, bd=999;
+            for (let b of [sphereBody, ...interactBodies]) {
+              const dist = hv.index.position.distanceTo(new THREE.Vector3(b.position.x,b.position.y,b.position.z));
+              if (dist < 0.25 && dist < bd) { bd = dist; best = b; }
+            }
+            if (best) {
+              const thrust = new CANNON.Vec3().copy(new CANNON.Vec3(best.position.x - hv.index.position.x, best.position.y - hv.index.position.y, best.position.z - hv.index.position.z)).negate().scale(0.02);
+              best.applyImpulse(thrust, best.position);
+            }
+          }
+        }
+      } catch(e){}
+    }
+  }
+
+  // Update controller kinematic bodies used by grabs
+  function updateControllerKinematics() {
+    for (const [controller, data] of grabConstraints) {
+      if (!controller) continue;
+      const pos = new THREE.Vector3(); controller.getWorldPosition(pos);
+      data.ctrlBody.position.copy(new CANNON.Vec3(pos.x, pos.y, pos.z));
+    }
+  }
+
+  // maintain orbiting sphere like before
   function maintainOrbit(dt) {
-    if (sphereBody.sleepState === CANNON.Body.SLEEPING) return;
-    // if it's being grabbed (massively constrained), skip
-    let grabbed = false;
-    for (const g of grabConstraints.values()) if (g.targetBody === sphereBody) grabbed = true;
+    // skip if grabbed
+    let grabbed=false;
+    for (const g of grabConstraints.values()) if (g.targetBody === sphereBody) grabbed=true;
     if (grabbed) return;
-
-    const center = centralBody.position;
-    const orbitalRadius = 2.0;
-    const speed = 1.2; // radians/s
-
-    // compute desired position on a circle that moves in time
-    const t = performance.now() * 0.001;
-    const desiredX = center.x + Math.cos(t * speed) * orbitalRadius;
-    const desiredZ = center.z + Math.sin(t * speed) * orbitalRadius;
-    const desiredY = 1.0 + Math.sin(t * 0.5) * 0.3;
-
-    // simple PD-like spring to pull the sphere towards desired position
-    const kp = 20;
-    const kd = 3;
-    const pos = sphereBody.position;
-    const vel = sphereBody.velocity;
-
-    const force = new CANNON.Vec3(
-      (desiredX - pos.x) * kp - vel.x * kd,
-      (desiredY - pos.y) * kp - vel.y * kd,
-      (desiredZ - pos.z) * kp - vel.z * kd
-    );
-    sphereBody.applyForce(force, pos);
+    const center = centralBody.position; const orbitalRadius = 2.0; const speedOrbit = 1.2;
+    const t = performance.now()*0.001;
+    const desired = new CANNON.Vec3(center.x + Math.cos(t*speedOrbit)*orbitalRadius, 1.0 + Math.sin(t*0.5)*0.3, center.z + Math.sin(t*speedOrbit)*orbitalRadius);
+    const kp=20, kd=3;
+    const pos = sphereBody.position, vel = sphereBody.velocity;
+    const fx = (desired.x - pos.x)*kp - vel.x*kd;
+    const fy = (desired.y - pos.y)*kp - vel.y*kd;
+    const fz = (desired.z - pos.z)*kp - vel.z*kd;
+    sphereBody.applyForce(new CANNON.Vec3(fx,fy,fz), pos);
   }
 
-  // Detect when player is on ground (for jumping)
+  // Cannon postStep to detect ground for jumping
   world.addEventListener('postStep', () => {
     canJump = false;
-    // raycast a little down from player
     const from = playerBody.position.clone();
-    const to = playerBody.position.clone().vsub(new CANNON.Vec3(0,0.7,0));
-    const result = new CANNON.RaycastResult();
+    const to = playerBody.position.clone().vsub(new CANNON.Vec3(0,0.8,0));
     const ray = new CANNON.Ray(from, to);
-    ray.intersectWorld(world, { collisionFilterMask: -1, skipBackfaces: true }, result);
-    if (result.hasHit) canJump = true;
+    const res = new CANNON.RaycastResult();
+    ray.intersectWorld(world, { skipBackfaces:true }, res);
+    if (res.hasHit) canJump = true;
   });
 
-  // Main loop
-  function animate(timestamp) {
-    renderer.setAnimationLoop(animate); // ensure XR uses this loop
-    const time = timestamp ? timestamp / 1000 : performance.now() / 1000;
-    if (!lastTime) lastTime = time;
-    let dt = Math.min(1/30, time - lastTime);
-    lastTime = time;
+  // Sync visuals with physics
+  function syncPhysicsGraphics() {
+    rig.position.set(playerBody.position.x, playerBody.position.y + 0.0, playerBody.position.z);
+    // disconnect camera height to let XR pose control head height in XR
+    if (!renderer.xr.isPresenting) camera.position.set(0, 0.6, 0);
 
-    // VR input or desktop WASD
-    let moveForward = moveState.forward;
-    let moveRight = moveState.right;
+    sphereMesh.position.copy(sphereBody.position); sphereMesh.quaternion.copy(sphereBody.quaternion);
+    centralMesh.position.copy(centralBody.position); centralMesh.quaternion.copy(centralBody.quaternion);
+    for (let i=0;i<interactMeshes.length;i++){
+      interactMeshes[i].position.copy(interactBodies[i].position); interactMeshes[i].quaternion.copy(interactBodies[i].quaternion);
+    }
+    sphereDebug.position.copy(playerBody.position);
+  }
 
+  // desktop camera rotation application
+  function applyDesktopRotation() {
+    camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+  }
+
+  // main loop
+  let last = null;
+  const fixedStep = 1/60;
+  function animate(time) {
+    renderer.setAnimationLoop(animate);
+    const t = time ? time/1000 : performance.now()/1000;
+    if (!last) last = t;
+    const dt = Math.min(1/30, t - last);
+    last = t;
+
+    // movement state (VR thumbstick or desktop keys)
+    let moveForward = moveState.forward, moveRight = moveState.right;
     if (renderer.xr.isPresenting) {
-      const vrAxes = processVRInput();
-      // small deadzone
-      if (Math.abs(vrAxes.forward) > 0.12) moveForward = vrAxes.forward;
-      if (Math.abs(vrAxes.right) > 0.12) moveRight = vrAxes.right;
+      // read VR axes from controllers (both)
+      let f = 0, r = 0;
+      [controller1, controller2].forEach(c => {
+        const gp = c.gamepad; if (!gp) return;
+        // common axes layout: 2/3 are thumbstick on some devices, else 0/1
+        const axX = gp.axes.length > 2 ? gp.axes[2] : gp.axes[0];
+        const axY = gp.axes.length > 3 ? gp.axes[3] : gp.axes[1];
+        if (axX !== undefined && axY !== undefined) { r += axX; f += -axY; }
+      });
+      // apply deadzone & clamp
+      if (Math.abs(f) > 0.12) moveForward = f;
+      if (Math.abs(r) > 0.12) moveRight = r;
     } else {
-      // apply desktop mouse rotation to yaw/pitch
+      // desktop, yaw/pitch already updated by pointerlock
     }
 
-    // compute direction relative to camera (yaw)
+    // compute orientation vector
     const euler = new THREE.Euler(pitch, yaw, 0, 'YXZ');
     const forwardVec = new THREE.Vector3(0,0,-1).applyEuler(euler).setY(0).normalize();
     const rightVec = new THREE.Vector3(1,0,0).applyEuler(euler).setY(0).normalize();
 
-    // apply velocity to player body
-    const targetVel = new CANNON.Vec3(
-      (forwardVec.x * moveForward + rightVec.x * moveRight) * speed,
-      playerBody.velocity.y,
-      (forwardVec.z * moveForward + rightVec.z * moveRight) * speed
-    );
-    // smoothing: lerp current velocity to target
-    const lerpFactor = 0.2;
-    playerBody.velocity.x += (targetVel.x - playerBody.velocity.x) * lerpFactor;
-    playerBody.velocity.z += (targetVel.z - playerBody.velocity.z) * lerpFactor;
+    const targetX = (forwardVec.x * moveForward + rightVec.x * moveRight) * speed;
+    const targetZ = (forwardVec.z * moveForward + rightVec.z * moveRight) * speed;
+    // smooth velocity
+    const lerp = 0.18;
+    playerBody.velocity.x += (targetX - playerBody.velocity.x) * lerp;
+    playerBody.velocity.z += (targetZ - playerBody.velocity.z) * lerp;
 
     // jump
-    if (moveState.jump && canJump) {
-      playerBody.velocity.y = 5.2;
-      moveState.jump = false;
-    }
+    if (moveState.jump && canJump) { playerBody.velocity.y = 5.2; moveState.jump = false; }
 
-    // update any controller kinematic bodies
-    updateControllerBodies();
-
-    // orbit sphere
+    // orbit maintain
     maintainOrbit(dt);
 
+    // update controller button polls (teleport/spawn)
+    pollControllerButtons();
+
+    // update kinematic controller bodies (for grabs)
+    updateControllerKinematics();
+
+    // update hand visuals & behavior
+    updateHands();
+
     // step physics
-    world.step(timeStep, dt, 3);
+    world.step(fixedStep, dt, 3);
 
     // sync graphics
-    syncPhysicsToGraphics();
+    syncPhysicsGraphics();
 
-    // update camera orientation for desktop
-    if (!renderer.xr.isPresenting) {
-      camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
-    } else {
-      // when in XR, rig's position is set from playerBody; camera comes from XR pose
-    }
+    if (!renderer.xr.isPresenting) applyDesktopRotation();
 
     renderer.render(scene, camera);
   }
-
-  // start loop (non-XR path)
   renderer.setAnimationLoop(animate);
 
-  // ---- window resize ----
-  window.addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  });
+  // window resize
+  window.addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
-  // ---- Make scene slightly prettier: skybox-ish gradient ----
-  const boxGeo = new THREE.BoxGeometry(100,100,100);
-  const boxMat = new THREE.MeshBasicMaterial({ color: 0x081018, side: THREE.BackSide });
-  const boxMesh = new THREE.Mesh(boxGeo, boxMat);
-  scene.add(boxMesh);
-
-  // ---- keep three/cannon in sync on start ----
-  syncPhysicsToGraphics();
-
-  // ---- helpful: expose spawn for dev console ----
+  // helper exposure & debug
   window.spawnBox = spawnBox;
+  window.toggleHandMode = toggleHandMode;
+  window.playerBody = playerBody;
+  window.scene = scene;
+  window.world = world;
 
-  // ---- Done ----
-  console.log('VR Orbit demo loaded. Use WASD or VR controllers. spawnBox(x,y,z) available from console.');
+  // simple binding: pressing controller "X" or keyboard 'X' spawns block (handled above)
+  // additional mapping: apply blaster using selectstart (we already bound it)
+  // Ensure grab start/stop via squeeze already bound
+  // If hand tracking is available it will be used when toggled on; user can also toggle with 'H'
+
+  console.log('Updated VR demo loaded. Hand mode available via H. Press X to spawn block.');
   </script>
 </body>
 </html>
