@@ -523,7 +523,15 @@
   </div>
 
   <!-- Floating text for level start -->
-  <div id="levelStartText" style="position:absolute; left:50%; top:30%; transform:translate(-50%,0); color:#fff; font-size:2em; font-family:sans-serif; z-index:1000; display:none; pointer-events:none; text-shadow:0 2px 8px #000;">Level Start</div>
+  <div id="levelStartText" style="position:fixed; left:50%; top:30%; transform:translate(-50%,0); color:#fff; font-size:2.5em; font-weight:bold; font-family:sans-serif; z-index:1000; display:none; pointer-events:none; text-shadow:0 0 15px rgba(255,255,255,0.7); background:rgba(0,0,0,0.6); padding:15px 30px; border-radius:10px; box-shadow:0 0 20px rgba(0,0,0,0.5);">Level Start</div>
+  <style>
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translate(-50%, -20px); }
+      20% { opacity: 1; transform: translate(-50%, 0); }
+      80% { opacity: 1; transform: translate(-50%, 0); }
+      100% { opacity: 0; transform: translate(-50%, -20px); }
+    }
+  </style>
 
   <!-- Load Chart.js for stock charts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -3706,10 +3714,13 @@
     }
 
     // --- Show Level Start Text Above Player ---
-    function showLevelStartText() {
+    function showLevelStartText(levelName = 'Level Start') {
       const el = document.getElementById('levelStartText');
       el.style.display = 'block';
-      el.textContent = 'Level Start';
+      el.textContent = levelName;
+      el.style.animation = 'none';
+      el.offsetHeight; // Trigger reflow
+      el.style.animation = 'fadeInOut 2.2s ease-in-out';
       setTimeout(() => { el.style.display = 'none'; }, 2200);
     }
 
@@ -3739,7 +3750,7 @@
               );
               inventory.ammo--;
               updateInventoryDisplay();
-              showDebugMessage("Block shot!");
+              showDebugMessage("");
               playSound('shootSound');
               showMuzzleFlash();
               setTimeout(() => playSound('shootImpactSound'), 120);
