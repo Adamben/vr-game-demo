@@ -2,28 +2,31 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Hand-only VR — Hand Tracking Fix (requests hand-tracking + joint visuals)</title>
+  <title>Hand-only VR — Hand Tracking Fix</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body { margin:0; overflow:hidden; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+    body { margin:0; overflow:hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
     #info {
       position: absolute; left: 10px; top: 10px; padding:10px 14px; background: rgba(0,0,0,0.45);
       color: #fff; border-radius:8px; max-width:380px; line-height:1.2;
     }
-    #xrBtn { display:block; margin-top:8px; }
+    #enterVr {
+      position: absolute; right: 10px; top: 10px; z-index: 10;
+      padding: 10px 16px; background: #1e88e5; color: white; border: none; border-radius: 8px; font-size: 16px;
+    }
+    #log { position: absolute; left:10px; bottom:10px; background: rgba(0,0,0,0.35); color:#ddd; padding:8px 10px; border-radius:6px; font-size:12px; max-width: 420px; }
   </style>
 </head>
 <body>
-  <div id="info">
-    Hand-tracking: requested by default. Click <button id="xrBtn">Enter VR (request hands)</button><br>
-    If your headset/browser supports hand-tracking the hand joints will appear and you can pinch/rub to play.
-  </div>
+  <div id="info"><b>Hand-tracking:</b> Enter VR using the button. Pinch to shoot (hand-mounted blasters). Rub hands to walk forward. If hands don't appear, enable Hand Tracking in headset settings.</div>
+  <button id="enterVr">Enter VR (hand-tracking)</button>
+  <div id="log">Status: idle</div>
 
   <script type="module">
   import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
   import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
 
-  // ---- Basic renderer/scene/camera ----
+  // --- basic three/cannon setup ---
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x081018);
   const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.05, 1000);
@@ -33,16 +36,14 @@
   renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // simple lighting
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x222244, 0.9); hemi.position.set(0,10,0); scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(2,6,4); dir.castShadow=true; scene.add(dir);
+  const logEl = document.getElementById('log');
+  function log(s){ logEl.textContent = 'Status: ' + s; console.log(s); }
 
-  // rig
-  const rig = new THREE.Group();
-  rig.add(camera);
-  scene.add(rig);
+  // light
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x222244, 0.8); hemi.position.set(0,10,0); scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(3,10,6); dir.castShadow=true; scene.add(dir);
 
-  // ---- Cannon world ----
+  // world
   const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
   world.broadphase = new CANNON.SAPBroadphase(world);
   world.solver.iterations = 10;
@@ -51,324 +52,306 @@
 
   // ground
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(120,120), new THREE.MeshStandardMaterial({ color:0x263238 }));
-  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
-  const groundBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Plane(), material: defaultMat });
+  ground.rotation.x = -Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+  const groundBody = new CANNON.Body({ type:CANNON.Body.STATIC, shape:new CANNON.Plane(), material:defaultMat });
   groundBody.quaternion.setFromEuler(-Math.PI/2,0,0); world.addBody(groundBody);
 
-  // small scene objects
+  // central + orbiting sphere
+  const centralMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshStandardMaterial({ color:0xff4444 }));
+  centralMesh.position.set(0,0.5,0); centralMesh.castShadow=true; scene.add(centralMesh);
+  const centralBody = new CANNON.Body({ type:CANNON.Body.STATIC, shape:new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5)), position:new CANNON.Vec3(0,0.5,0), material:defaultMat });
+  world.addBody(centralBody);
+
+  const sphereMesh = new THREE.Mesh(new THREE.SphereGeometry(0.4,32,32), new THREE.MeshStandardMaterial({ color:0x00ff88 }));
+  sphereMesh.castShadow=true; scene.add(sphereMesh);
+  const sphereBody = new CANNON.Body({ mass:1, shape:new CANNON.Sphere(0.4), position:new CANNON.Vec3(2,1,0), material:defaultMat });
+  world.addBody(sphereBody);
+
+  // interactables
   const interactMeshes = [], interactBodies = [];
   function spawnBox(x,y,z,color=0x4488ff,mass=2){
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.6,0.6), new THREE.MeshStandardMaterial({ color }));
     m.castShadow=true; m.position.set(x,y,z); scene.add(m);
-    const b = new CANNON.Body({ mass, shape: new CANNON.Box(new CANNON.Vec3(0.3,0.3,0.3)), position: new CANNON.Vec3(x,y,z), material: defaultMat });
-    world.addBody(b);
-    interactMeshes.push(m); interactBodies.push(b);
+    const b = new CANNON.Body({ mass, shape:new CANNON.Box(new CANNON.Vec3(0.3,0.3,0.3)), position:new CANNON.Vec3(x,y,z), material:defaultMat });
+    world.addBody(b); interactMeshes.push(m); interactBodies.push(b);
     return { m,b };
   }
 
-  spawnBox(-3,0.375,-1.5,0x4455aa,0); // static block
-  spawnBox(3,0.6,-2,0xaa5544,0); // static block
+  // two static blocks
+  spawnBox(-3,0.375,-1.5,0x4455aa,0);
+  spawnBox(3,0.6,-2,0xaa5544,0);
 
-  spawnBox(1.5,1,-1,0x4488ff,2);
-  spawnBox(-1.5,1,-1,0xffaa33,2);
-  spawnBox(0,2,-2,0x00ffaa,2);
+  // sample interactables
+  spawnBox(1.5,1,-1,0x4488ff,2); spawnBox(-1.5,1,-1,0xffaa33,2); spawnBox(0,2,-2,0x00ffaa,2);
 
-  // orbit sphere + central static cube
-  const centralMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshStandardMaterial({ color:0xff4444 }));
-  centralMesh.position.set(0,0.5,0); centralMesh.castShadow = true; scene.add(centralMesh);
-  const centralBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5)), position: new CANNON.Vec3(0,0.5,0), material: defaultMat });
-  world.addBody(centralBody);
-
-  const sphereMesh = new THREE.Mesh(new THREE.SphereGeometry(0.4,32,32), new THREE.MeshStandardMaterial({ color:0x00ff88 }));
-  sphereMesh.castShadow = true; scene.add(sphereMesh);
-  const sphereBody = new CANNON.Body({ mass:1, shape: new CANNON.Sphere(0.4), position: new CANNON.Vec3(2,1,0), material: defaultMat });
-  world.addBody(sphereBody);
-
-  // player physics body (for pushing)
-  const playerBody = new CANNON.Body({ mass:1, shape: new CANNON.Sphere(0.35), position: new CANNON.Vec3(0,1,4), fixedRotation:true, material: defaultMat });
+  // player body
+  const playerBody = new CANNON.Body({ mass:1, shape:new CANNON.Sphere(0.35), position:new CANNON.Vec3(0,1.0,4), fixedRotation:true, material:defaultMat });
   playerBody.linearDamping = 0.9; world.addBody(playerBody);
+  const playerDebug = new THREE.Mesh(new THREE.SphereGeometry(0.35,8,8), new THREE.MeshBasicMaterial({ visible:false }));
+  scene.add(playerDebug);
 
-  // ---- Hand-tracking (request on XR session) ----
-  // We'll create hand groups using renderer.xr.getHand(N) and attach small joint meshes to hand.joints[] after the session starts.
-  const xrHands = [ renderer.xr.getHand(0), renderer.xr.getHand(1) ];
-  xrHands.forEach(h => scene.add(h)); // add to scene now (they'll be populated after session)
+  // hand-only visuals (created upfront but only shown if session supports hands)
+  const handGroups = []; // { group, wrist, thumb, index, muzzle }
+  function makeHandVisual(color){
+    const g = new THREE.Group();
+    const wrist = new THREE.Mesh(new THREE.SphereGeometry(0.04,8,8), new THREE.MeshStandardMaterial({ color }));
+    const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.03,8,8), new THREE.MeshStandardMaterial({ color:0xffeebb }));
+    const index = new THREE.Mesh(new THREE.SphereGeometry(0.03,8,8), new THREE.MeshStandardMaterial({ color:0xccffcc }));
+    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.04,12,12), new THREE.MeshStandardMaterial({ color:0xffdd66 }));
+    g.add(wrist, thumb, index, muzzle);
+    g.visible = false; scene.add(g);
+    return { group:g, wrist, thumb, index, muzzle };
+  }
+  handGroups.push(makeHandVisual(0xff9966), makeHandVisual(0x66ccff));
 
-  // joint mesh containers so we can create/attach meshes to real XR joint nodes later
-  const jointMeshes = [ {}, {} ]; // jointMeshes[handIndex][jointName] = mesh
-  const jointNames = [
-    'wrist',
-    'thumb-metacarpal','thumb-phalanx-proximal','thumb-phalanx-distal','thumb-tip',
-    'index-finger-metacarpal','index-finger-proximal','index-finger-intermediate','index-finger-distal','index-finger-tip',
-    'middle-finger-tip','ring-finger-tip','pinky-finger-tip'
+  // XR hand containers (we will call getHand AFTER session start)
+  let xrHand0 = null, xrHand1 = null;
+  let sessionSupportsHands = false;
+
+  // debug hand state
+  const handState = [
+    { pinch:false, pinchStart:0, pos:new THREE.Vector3(), prevPos:new THREE.Vector3(), vel:new THREE.Vector3() },
+    { pinch:false, pinchStart:0, pos:new THREE.Vector3(), prevPos:new THREE.Vector3(), vel:new THREE.Vector3() }
   ];
 
-  // helper to create a small sphere
-  function makeJointMesh(r=0.02, color=0xffcc88){
-    const g = new THREE.Mesh(new THREE.SphereGeometry(r,8,8), new THREE.MeshStandardMaterial({ color }));
-    g.castShadow = true;
-    return g;
-  }
-
-  // Called once after we start XR to create visual spheres and parent them to hand.joints nodes when available
-  function createJointVisualsForSession(session) {
-    // each hand
-    for (let i=0;i<2;i++){
-      const hand = xrHands[i];
-      jointNames.forEach(name => {
-        // if scene already has a mesh for this joint, skip
-        if (jointMeshes[i][name]) return;
-        // create mesh and try to attach to the XR joint when available
-        const mesh = makeJointMesh(0.03, i===0 ? 0xff9966 : 0x66ccff);
-        jointMeshes[i][name] = mesh;
-        // Try to attach to the joint node if it exists; otherwise we will check every frame (safe)
-        try {
-          if (hand.joints && hand.joints[name]) {
-            hand.joints[name].add(mesh);
-            mesh.visible = true;
-          } else {
-            // fallback: add to hand group and we'll update position manually each frame
-            hand.add(mesh);
-            mesh.visible = true;
-          }
-        } catch(e) {
-          // worst-case: add to scene and hide until we can parent it
-          scene.add(mesh);
-          mesh.visible = true;
+  // helper: safe joint fetch with many name fallbacks
+  function getJointPositionSafe(hand, names){
+    if (!hand || !hand.joints) return null;
+    for (const n of names) {
+      try {
+        const joint = hand.joints[n];
+        if (joint && joint.matrixWorld) {
+          return new THREE.Vector3().setFromMatrixPosition(joint.matrixWorld);
         }
-      });
+      } catch(e){}
     }
-    console.log('Joint visuals created and (where possible) parented to XR hand joints.');
+    // fallback to hand group world pos
+    const tmp = new THREE.Vector3(); hand.getWorldPosition(tmp); return tmp;
   }
 
-  // helper to try parent joint meshes to actual joint nodes each frame (in case joints appear later)
-  function tryAttachJointMeshes() {
-    for (let i=0;i<2;i++){
-      const hand = xrHands[i];
-      for (const name of jointNames) {
-        const mesh = jointMeshes[i][name];
-        if (!mesh) continue;
-        // if mesh is already parented directly to joint node, continue
-        if (mesh.parent && mesh.parent === (hand.joints && hand.joints[name])) continue;
-        // if joint exists now, re-parent and reset local transform
-        try {
-          if (hand.joints && hand.joints[name]) {
-            hand.joints[name].add(mesh);
-            mesh.position.set(0,0,0);
-            mesh.quaternion.set(0,0,0,1);
-          }
-        } catch(e){}
-      }
-    }
+  function detectPinch(hand){
+    const thumbNames = ['thumb-tip','thumb-phalanx-tip','thumb-metacarpal'];
+    const indexNames = ['index-finger-tip','index-tip','index-finger-phalanx-tip'];
+    const thumbP = getJointPositionSafe(hand, thumbNames);
+    const indexP = getJointPositionSafe(hand, indexNames);
+    if (!thumbP || !indexP) return { pinch:false, thumbP, indexP, distance:999 };
+    const d = thumbP.distanceTo(indexP);
+    return { pinch: d < 0.045, thumbP, indexP, distance:d };
   }
 
-  // ---- Hand interaction basics (pinch/shoot/rub) ----
-  // Very similar to previous logic; simplified here so focus is on enabling hands & visuals.
-  const handState = [{ pos:new THREE.Vector3(), prevPos:new THREE.Vector3(), pinch:false, pinchStart:0 }, { pos:new THREE.Vector3(), prevPos:new THREE.Vector3(), pinch:false, pinchStart:0 }];
-  const handGrabConstraints = new Map();
-  const rubHistory = [];
-
-  function detectPinch(hand) {
-    // try common joint names for thumb/index
-    const thumb = hand.joints && (hand.joints['thumb-tip'] || hand.joints['thumb-phalanx-tip']);
-    const index = hand.joints && (hand.joints['index-finger-tip'] || hand.joints['index-tip']);
-    if (!thumb || !index) return { pinch:false, thumbP:null, indexP:null, distance:999 };
-    try {
-      const t = new THREE.Vector3().setFromMatrixPosition(thumb.matrixWorld);
-      const i = new THREE.Vector3().setFromMatrixPosition(index.matrixWorld);
-      const d = t.distanceTo(i);
-      return { pinch: d < 0.045, thumbP: t, indexP: i, distance:d };
-    } catch(e) { return { pinch:false, thumbP:null, indexP:null, distance:999 }; }
-  }
-
-  function estimateHandForward(hand) {
-    const wrist = hand.joints && (hand.joints['wrist']);
-    const index = hand.joints && (hand.joints['index-finger-tip'] || hand.joints['index-tip']);
-    const thumb = hand.joints && (hand.joints['thumb-tip']);
+  // estimate hand forward using wrist->index tip
+  function estimateHandForward(hand){
+    const wrist = getJointPositionSafe(hand, ['wrist','wrist-radius']);
+    const indexTip = getJointPositionSafe(hand, ['index-finger-tip','index-tip','index-finger-phalanx-tip']);
+    const thumbTip = getJointPositionSafe(hand, ['thumb-tip','thumb-phalanx-tip']);
     const dir = new THREE.Vector3();
-    try {
-      if (wrist && index) {
-        const w = new THREE.Vector3().setFromMatrixPosition(wrist.matrixWorld);
-        const it = new THREE.Vector3().setFromMatrixPosition(index.matrixWorld);
-        dir.copy(it).sub(w).normalize();
-      } else if (index && thumb) {
-        const it = new THREE.Vector3().setFromMatrixPosition(index.matrixWorld);
-        const th = new THREE.Vector3().setFromMatrixPosition(thumb.matrixWorld);
-        dir.copy(it).sub(th).normalize();
-      } else {
-        camera.getWorldDirection(dir);
-      }
-    } catch(e){ camera.getWorldDirection(dir); }
-    // soften vertical bias
+    if (wrist && indexTip) dir.copy(indexTip).sub(wrist).normalize();
+    else if (indexTip && thumbTip) dir.copy(indexTip).sub(thumbTip).normalize();
+    else camera.getWorldDirection(dir);
     if (Math.abs(dir.y) > 0.85) { dir.y *= 0.5; dir.normalize(); }
     return dir;
   }
 
-  function handShootFromMuzzle(muzzlePos, hand) {
-    const dir = estimateHandForward(hand);
-    const hit = raycastBodies(muzzlePos, dir, 40);
-    if (hit) {
-      hit.body.applyImpulse(new CANNON.Vec3(dir.x, dir.y, dir.z).scale(8), hit.body.position);
-    } else {
-      const p = new THREE.Mesh(new THREE.SphereGeometry(0.05,8,8), new THREE.MeshStandardMaterial({ color:0xffdd66 }));
-      scene.add(p);
-      const spawn = muzzlePos.clone().add(dir.clone().multiplyScalar(0.06));
-      p.position.copy(spawn);
-      const pb = new CANNON.Body({ mass:0.18, shape: new CANNON.Sphere(0.05), position:new CANNON.Vec3(spawn.x, spawn.y, spawn.z), material: defaultMat });
-      pb.velocity.set(dir.x*24, dir.y*24, dir.z*24);
-      world.addBody(pb);
-      interactMeshes.push(p); interactBodies.push(pb);
-      setTimeout(()=> { try { scene.remove(p); world.removeBody(pb); } catch(e){} }, 6000);
-    }
-  }
-
-  function raycastBodies(origin, direction, maxDist=30) {
+  // raycast dynamic bodies
+  function raycastBodies(origin, direction, maxDist=30){
     let best=null, bestDist=Infinity;
-    for (const b of [sphereBody, ...interactBodies]) {
+    for (const b of [sphereBody, ...interactBodies]){
       if (b.type === CANNON.Body.STATIC) continue;
-      const pos = new THREE.Vector3(b.position.x, b.position.y, b.position.z);
+      const pos = new THREE.Vector3(b.position.x,b.position.y,b.position.z);
       const to = pos.clone().sub(origin);
       const proj = to.dot(direction);
       if (proj < 0 || proj > maxDist) continue;
       const perp = to.clone().sub(direction.clone().multiplyScalar(proj)).length();
       const radius = (b.shapes[0] instanceof CANNON.Sphere) ? b.shapes[0].radius : 0.35;
-      if (perp <= radius + 0.12 && proj < bestDist) { bestDist = proj; best = { body:b, hitPoint: origin.clone().add(direction.clone().multiplyScalar(proj)), dist: proj }; }
+      if (perp <= radius + 0.12 && proj < bestDist){ bestDist = proj; best = { body:b, hitPoint: origin.clone().add(direction.clone().multiplyScalar(proj)), dist:proj }; }
     }
     return best;
   }
 
-  // simple grab using point-to-point constraint (sustained pinch)
-  function startHandGrab(i, pos) {
-    if (handGrabConstraints.has(i)) return;
+  // shoot from hand muzzle
+  function handShoot(hand, muzzlePos){
+    const dir = estimateHandForward(hand);
+    if (dir.length() < 1e-4){ camera.getWorldDirection(dir); dir.y *= 0.1; dir.normalize(); }
+    const origin = muzzlePos.clone();
+    const hit = raycastBodies(origin, dir, 40);
+    if (hit){
+      const impulse = new CANNON.Vec3(dir.x, dir.y, dir.z).scale(8);
+      hit.body.applyImpulse(impulse, hit.body.position);
+    } else {
+      const pGeo = new THREE.SphereGeometry(0.05,8,8);
+      const pMat = new THREE.MeshStandardMaterial({ color:0xffdd66 });
+      const pMesh = new THREE.Mesh(pGeo, pMat); pMesh.castShadow=true; scene.add(pMesh);
+      const spawn = origin.clone().add(dir.clone().multiplyScalar(0.08));
+      pMesh.position.copy(spawn);
+      const pBody = new CANNON.Body({ mass:0.18, shape:new CANNON.Sphere(0.05), position:new CANNON.Vec3(spawn.x, spawn.y, spawn.z), material:defaultMat });
+      pBody.velocity.set(dir.x*24, dir.y*24, dir.z*24);
+      world.addBody(pBody); interactMeshes.push(pMesh); interactBodies.push(pBody);
+      setTimeout(()=>{ try{ scene.remove(pMesh); world.removeBody(pBody); }catch(e){} }, 6000);
+    }
+  }
+
+  // grabbing via pinch (sustained)
+  const handGrabConstraints = new Map();
+  function startHandGrab(index, pos){
+    if (handGrabConstraints.has(index)) return;
     let best=null, bd=999;
     for (const b of [sphereBody, ...interactBodies]) {
       const d = pos.distanceTo(new THREE.Vector3(b.position.x,b.position.y,b.position.z));
-      if (d < 0.28 && d < bd) { bd = d; best = b; }
+      if (d < 0.28 && d < bd) { bd=d; best=b; }
     }
     if (!best) return;
     const ctrl = new CANNON.Body({ mass:0, type:CANNON.Body.KINEMATIC });
-    ctrl.position.copy(new CANNON.Vec3(pos.x, pos.y, pos.z));
+    ctrl.position.copy(new CANNON.Vec3(pos.x,pos.y,pos.z));
     world.addBody(ctrl);
     const pivot = best.pointToLocalFrame(new CANNON.Vec3(pos.x,pos.y,pos.z));
     const constraint = new CANNON.PointToPointConstraint(best, pivot, ctrl, new CANNON.Vec3(0,0,0));
     world.addConstraint(constraint);
-    handGrabConstraints.set(i, { constraint, ctrlBody: ctrl, targetBody: best });
+    handGrabConstraints.set(index, { constraint, ctrlBody:ctrl, targetBody:best });
   }
-  function endHandGrab(i, throwDir=null) {
-    const d = handGrabConstraints.get(i);
-    if (!d) return;
+  function endHandGrab(index, throwDir=null){
+    const d = handGrabConstraints.get(index); if (!d) return;
     if (throwDir) d.targetBody.applyImpulse(new CANNON.Vec3(throwDir.x, throwDir.y, throwDir.z).scale(2.5), d.targetBody.position);
-    try { world.removeConstraint(d.constraint); world.removeBody(d.ctrlBody); } catch(e){}
-    handGrabConstraints.delete(i);
+    try{ world.removeConstraint(d.constraint); world.removeBody(d.ctrlBody); }catch(e){}
+    handGrabConstraints.delete(index);
   }
-
-  function updateHandKinematics() {
-    for (const [i, data] of handGrabConstraints) {
-      const p = handState[i].pos;
-      data.ctrlBody.position.copy(new CANNON.Vec3(p.x, p.y, p.z));
-    }
+  function updateHandKinematics(){
+    for (const [idx,d] of handGrabConstraints){ const p = handState[idx].pos; d.ctrlBody.position.copy(new CANNON.Vec3(p.x,p.y,p.z)); }
   }
 
   // rubbing detection
-  function addRubSample(dist, t) {
-    rubHistory.push({ dist, t });
-    if (rubHistory.length > 14) rubHistory.shift();
-  }
-  function computeRubIntensity() {
+  const rubHistory = [];
+  function addRubSample(dist, t){ rubHistory.push({dist,t}); if (rubHistory.length>14) rubHistory.shift(); }
+  function computeRubIntensity(){
     if (rubHistory.length < 6) return 0;
-    let sumAbs=0;
+    let sumAbsDeriv = 0;
     for (let i=1;i<rubHistory.length;i++){
       const dt = Math.max(1e-4, rubHistory[i].t - rubHistory[i-1].t);
-      sumAbs += Math.abs((rubHistory[i].dist - rubHistory[i-1].dist)/dt);
+      sumAbsDeriv += Math.abs((rubHistory[i].dist - rubHistory[i-1].dist)/dt);
     }
-    const avg = sumAbs / (rubHistory.length -1);
+    const avgDeriv = sumAbsDeriv / (rubHistory.length-1);
     const latest = rubHistory[rubHistory.length-1].dist;
     const closeness = Math.max(0, 1 - (latest / 0.22));
-    const intensity = avg * 0.02 * closeness;
+    const intensity = avgDeriv * 0.02 * closeness;
     return Math.max(0, Math.min(1.5, intensity));
   }
 
-  // orbiter
-  function maintainOrbit(dt) {
+  // orbit maintain
+  function maintainOrbit(dt){
     let grabbed=false; for (const v of handGrabConstraints.values()) if (v.targetBody === sphereBody) grabbed=true;
     if (grabbed) return;
-    const center = centralBody.position; const orbitalRadius = 2.0; const spd = 1.2;
+    const center=centralBody.position; const orbitalRadius=2.0; const speedOrbit=1.2;
     const t = performance.now()*0.001;
-    const des = new CANNON.Vec3(center.x + Math.cos(t*spd)*orbitalRadius, 1.0 + Math.sin(t*0.5)*0.3, center.z + Math.sin(t*spd)*orbitalRadius);
-    const kp=20, kd=3;
-    const pos = sphereBody.position, vel = sphereBody.velocity;
+    const des = new CANNON.Vec3(center.x + Math.cos(t*speedOrbit)*orbitalRadius, 1.0 + Math.sin(t*0.5)*0.3, center.z + Math.sin(t*speedOrbit)*orbitalRadius);
+    const kp=20, kd=3; const pos = sphereBody.position, vel = sphereBody.velocity;
     sphereBody.applyForce(new CANNON.Vec3((des.x-pos.x)*kp - vel.x*kd, (des.y-pos.y)*kp - vel.y*kd, (des.z-pos.z)*kp - vel.z*kd), pos);
   }
 
-  // sync physics -> visuals
-  function syncPhysicsGraphics() {
-    if (renderer.xr.isPresenting) {
+  // sync physics->graphics
+  function syncPhysicsGraphics(){
+    if (renderer.xr.isPresenting){
       const head = new THREE.Vector3(); camera.getWorldPosition(head);
       playerBody.position.x = head.x; playerBody.position.z = head.z;
-      playerBody.position.y = Math.max(0.3, head.y - 0.55);
-      playerBody.velocity.set(0,0,0);
+      playerBody.position.y = Math.max(0.3, head.y - 0.55); playerBody.velocity.set(0,0,0);
     } else {
-      rig.position.set(playerBody.position.x, playerBody.position.y + 0.0, playerBody.position.z);
       camera.position.set(0,0.6,0);
     }
     sphereMesh.position.copy(sphereBody.position); sphereMesh.quaternion.copy(sphereBody.quaternion);
     centralMesh.position.copy(centralBody.position); centralMesh.quaternion.copy(centralBody.quaternion);
     for (let i=0;i<interactMeshes.length;i++){ interactMeshes[i].position.copy(interactBodies[i].position); interactMeshes[i].quaternion.copy(interactBodies[i].quaternion); }
+    playerDebug.position.copy(playerBody.position);
   }
 
-  // ---- XR session creation that requests hand-tracking ----
-  const xrBtn = document.getElementById('xrBtn');
-  xrBtn.addEventListener('click', async () => {
-    if (!navigator.xr) {
-      alert('WebXR not available in this browser.');
-      return;
-    }
-    try {
-      // prefer immersive-vr and request hand-tracking as optional feature
-      const session = await navigator.xr.requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor', 'hand-tracking', 'bounded-floor', 'layers']
-      });
-      await renderer.xr.setSession(session);
-      console.log('XR session started. Hand-tracking requested.');
-      // create joint visuals once session started
-      createJointVisualsForSession(session);
-    } catch (err) {
-      console.warn('Failed to start XR session with hands:', err);
-      // fallback: try a plain session without hand-tracking
-      try {
-        const session2 = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor','bounded-floor'] });
-        await renderer.xr.setSession(session2);
-        console.log('XR fallback session started (no hand-tracking requested).');
-      } catch(e){ console.error('XR fallback failed:', e); alert('Unable to start XR session.'); }
-    }
-  });
+  // desktop pointerlock
+  let yaw=0, pitch=0, pointerLocked=false;
+  document.addEventListener('mousemove', e => { if (!pointerLocked) return; yaw -= e.movementX*0.0025; pitch -= e.movementY*0.0025; pitch = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, pitch)); });
+  document.addEventListener('click', ()=> renderer.domElement.requestPointerLock?.());
+  document.addEventListener('pointerlockchange', ()=> pointerLocked = document.pointerLockElement === renderer.domElement);
 
-  // ---- main loop ----
-  let last = null; const fixedStep = 1/60;
-  function animate(ts) {
+  // XR session handling with optionalFeatures including hand-tracking
+  const enterBtn = document.getElementById('enterVr');
+  async function startXRWithHands(){
+    if (!navigator.xr) { alert('WebXR not available in this browser. Use Meta Quest Browser or Chrome Canary with flags.'); return; }
+    try {
+      log('requesting immersive-vr session (hand-tracking)...');
+      const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor','hand-tracking','bounded-floor'] });
+      log('session granted. setting renderer.xr.session...');
+      await renderer.xr.setSession(session);
+      // now get hand references
+      xrHand0 = renderer.xr.getHand(0);
+      xrHand1 = renderer.xr.getHand(1);
+      scene.add(xrHand0, xrHand1);
+      // show visuals only after session reports inputSources
+      session.addEventListener('inputsourceschange', (ev) => {
+        // check if any input source has hand
+        sessionSupportsHands = Array.from(session.inputSources).some(s => !!s.hand);
+        log('inputsourceschange — hand support: ' + (sessionSupportsHands ? 'yes' : 'no'));
+        if (sessionSupportsHands) {
+          // enable hand visuals
+          handGroups.forEach(h => h.group.visible = true);
+        }
+      });
+      // also check immediately
+      sessionSupportsHands = Array.from(session.inputSources).some(s => !!s.hand);
+      log('session started — initial hand support: ' + (sessionSupportsHands ? 'yes' : 'no'));
+      if (sessionSupportsHands) handGroups.forEach(h => h.group.visible = true);
+      enterBtn.style.display = 'none';
+    } catch(err){
+      console.error(err);
+      log('XR session request failed — ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  enterBtn.addEventListener('click', startXRWithHands);
+
+  // fallback: if page already in immersive session (rare), try to setup hands
+  if (navigator.xr && navigator.xr.isSessionSupported) {
+    navigator.xr.isSessionSupported('immersive-vr').then(sup => log('immersive-vr supported: ' + sup)).catch(()=>{});
+  }
+
+  // main loop
+  let last=null; const fixedStep = 1/60;
+  function animate(ts){
     renderer.setAnimationLoop(animate);
     const t = ts ? ts/1000 : performance.now()/1000;
     if (!last) last = t;
-    const dt = Math.min(1/30, t - last);
+    const dt = Math.min(1/30, t-last);
     last = t;
 
-    // try attaching joint meshes to real joint nodes if they became available
-    tryAttachJointMeshes();
-
-    // update hand states (0 & 1)
+    // Only attempt to use hand joints if we have an active XR session that supports hands
+    const hands = [xrHand0, xrHand1];
     const headPos = new THREE.Vector3(); camera.getWorldPosition(headPos);
     for (let i=0;i<2;i++){
-      const hand = xrHands[i];
+      const hand = hands[i];
+      if (!hand) { handState[i].pos.set(0,0,0); continue; }
       const pin = detectPinch(hand);
-      const pos = (pin.indexP ? pin.indexP.clone() : (pin.thumbP ? pin.thumbP.clone() : (hand.joints && hand.joints['wrist'] ? new THREE.Vector3().setFromMatrixPosition(hand.joints['wrist'].matrixWorld) : new THREE.Vector3())));
-      handState[i].prevPos.copy(handState[i].pos); handState[i].pos.copy(pos);
+      // choose position: prefer index tip, then thumb tip, then wrist
+      const posEstimate = pin.indexP || pin.thumbP || getJointPositionSafe(hand, ['wrist','wrist-radius']) || new THREE.Vector3();
+      handState[i].prevPos.copy(handState[i].pos); handState[i].pos.copy(posEstimate);
+      const dtPos = Math.max(1e-4, dt);
+      handState[i].vel.copy(handState[i].pos).sub(handState[i].prevPos).divideScalar(dtPos);
+
+      // update visuals if visible
+      const hv = handGroups[i];
+      if (hv.group.visible) {
+        const wristP = getJointPositionSafe(hand, ['wrist','wrist-radius']);
+        if (wristP) hv.wrist.position.copy(wristP);
+        if (pin.thumbP) hv.thumb.position.copy(pin.thumbP);
+        if (pin.indexP) hv.index.position.copy(pin.indexP);
+        // muzzle a bit forward from hand using estimateHandForward
+        const forward = estimateHandForward(hand);
+        const muzzlePos = handState[i].pos.clone().add(forward.clone().multiplyScalar(0.06));
+        hv.muzzle.position.copy(muzzlePos);
+      }
+
+      // pinch transitions
       const now = t;
       if (pin.pinch && !handState[i].pinch) { handState[i].pinch = true; handState[i].pinchStart = now; }
       else if (!pin.pinch && handState[i].pinch) {
         const held = now - handState[i].pinchStart;
-        // quick pinch = shoot from muzzle at joint mesh if exists, or index tip
-        const muzzle = (jointMeshes[i]['index-finger-tip'] && jointMeshes[i]['index-finger-tip'].getWorldPosition) ? new THREE.Vector3().setFromMatrixPosition(jointMeshes[i]['index-finger-tip'].matrixWorld) : handState[i].pos.clone();
         if (held < 0.22) {
-          handShootFromMuzzle(muzzle, hand);
+          // quick pinch -> shoot from hand muzzle
+          if (handGroups[i].group.visible) handShoot(hand, handGroups[i].muzzle.position);
+          else handShoot(hand, handState[i].pos);
         } else {
           const throwDir = estimateHandForward(hand).clone();
           endHandGrab(i, throwDir);
@@ -380,9 +363,10 @@
       }
     }
 
-    // rubbing
-    const left = handState[0].pos.clone(); const right = handState[1].pos.clone();
-    const palmDist = left.distanceTo(right);
+    // rubbing detection & movement
+    const leftPos = handState[0].pos.clone();
+    const rightPos = handState[1].pos.clone();
+    const palmDist = leftPos.distanceTo(rightPos);
     addRubSample(palmDist, t);
     const rubIntensity = computeRubIntensity();
     if (rubIntensity > 0.03) {
@@ -398,13 +382,9 @@
     // update kinematic grabs
     updateHandKinematics();
 
-    // orbit
     maintainOrbit(dt);
 
-    // step physics
     world.step(fixedStep, dt, 4);
-
-    // sync visuals
     syncPhysicsGraphics();
 
     renderer.render(scene, camera);
@@ -414,9 +394,11 @@
   // resize
   window.addEventListener('resize', ()=> { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
-  // expose spawn for debug
+  // expose helpers for debug
   window.spawnBox = spawnBox;
-  console.log('Page ready — press the "Enter VR (request hands)" button. If your browser supports hand-tracking the joint spheres should appear.');
+  window.playerBody = playerBody;
+
+  log('ready — click "Enter VR" to start an XR session with hand-tracking (if supported).');
 
   </script>
 </body>
