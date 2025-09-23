@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Hand-only VR — Hand Tracking Fix</title>
+  <title>Hand-only VR — Hand Tracking Fix + Improved Rubbing</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     body { margin:0; overflow:hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
@@ -218,22 +218,70 @@
     for (const [idx,d] of handGrabConstraints){ const p = handState[idx].pos; d.ctrlBody.position.copy(new CANNON.Vec3(p.x,p.y,p.z)); }
   }
 
-  // rubbing detection
-  const rubHistory = [];
-  function addRubSample(dist, t){ rubHistory.push({dist,t}); if (rubHistory.length>14) rubHistory.shift(); }
+  // ---------- Improved rub detection (replaces previous simple version) ----------
+  const rubHistory = []; // {dist, t}
+
+// call this each frame with current palm distance and time
+  function addRubSample(dist, t){
+    rubHistory.push({ dist, t });
+    // keep only last N samples (~0.6-0.8s depending on framerate)
+    if (rubHistory.length > 18) rubHistory.shift();
+  }
+
+// returns intensity (0..~1.5). Will be 0 for steady overlap/clap.
   function computeRubIntensity(){
     if (rubHistory.length < 6) return 0;
+
+    // Build arrays
+    const D = rubHistory.map(s => s.dist);
+    const T = rubHistory.map(s => s.t);
+
+    // compute average absolute derivative (speed)
     let sumAbsDeriv = 0;
-    for (let i=1;i<rubHistory.length;i++){
-      const dt = Math.max(1e-4, rubHistory[i].t - rubHistory[i-1].t);
-      sumAbsDeriv += Math.abs((rubHistory[i].dist - rubHistory[i-1].dist)/dt);
+    const derivs = [];
+    for (let i = 1; i < D.length; ++i) {
+      const dt = Math.max(1e-4, T[i] - T[i-1]);
+      const deriv = (D[i] - D[i-1]) / dt;
+      derivs.push(deriv);
+      sumAbsDeriv += Math.abs(deriv);
     }
-    const avgDeriv = sumAbsDeriv / (rubHistory.length-1);
-    const latest = rubHistory[rubHistory.length-1].dist;
-    const closeness = Math.max(0, 1 - (latest / 0.22));
-    const intensity = avgDeriv * 0.02 * closeness;
+    const avgAbsDeriv = sumAbsDeriv / Math.max(1, derivs.length);
+
+    // compute stddev of distances (measures variance / oscillation amplitude)
+    const meanD = D.reduce((a,b)=>a+b,0) / D.length;
+    let sumSq = 0;
+    for (const v of D) sumSq += (v - meanD) * (v - meanD);
+    const stdDev = Math.sqrt(sumSq / D.length);
+
+    // count sign changes in derivative where magnitude exceeds a small threshold
+    let signChanges = 0;
+    const magThreshold = 0.0025; // ignore tiny jitter
+    for (let i = 1; i < derivs.length; ++i) {
+      if (Math.abs(derivs[i]) < magThreshold && Math.abs(derivs[i-1]) < magThreshold) continue;
+      if (derivs[i] * derivs[i-1] < 0) signChanges++;
+    }
+
+    // closeness factor (if hands too far apart, rubbing shouldn't move much)
+    const latest = D[D.length - 1];
+    const closeness = Math.max(0, 1 - (latest / 0.22)); // 1 when at 0 distance, 0 at 0.22m
+
+    // Require all three signals to indicate rubbing:
+    // 1) enough average motion (avgAbsDeriv)
+    // 2) some amplitude (stdDev) — prevents clap (steady-zero) from triggering
+    // 3) at least a couple sign changes (oscillation)
+    const MIN_AVG_DERIV = 0.015;   // tuned: how fast distance must change on average
+    const MIN_STDDEV = 0.007;      // tuned: minimal oscillation amplitude to consider "rubbing"
+    const MIN_SIGN_CHANGES = 2;    // need at least two derivative sign reversals in window
+
+    if (avgAbsDeriv < MIN_AVG_DERIV || stdDev < MIN_STDDEV || signChanges < MIN_SIGN_CHANGES) {
+      return 0;
+    }
+
+    // compute intensity and clamp
+    const intensity = avgAbsDeriv * 0.02 * closeness;
     return Math.max(0, Math.min(1.5, intensity));
   }
+  // ------------------------------------------------------------------------------
 
   // orbit maintain
   function maintainOrbit(dt){
@@ -282,11 +330,9 @@
       scene.add(xrHand0, xrHand1);
       // show visuals only after session reports inputSources
       session.addEventListener('inputsourceschange', (ev) => {
-        // check if any input source has hand
         sessionSupportsHands = Array.from(session.inputSources).some(s => !!s.hand);
         log('inputsourceschange — hand support: ' + (sessionSupportsHands ? 'yes' : 'no'));
         if (sessionSupportsHands) {
-          // enable hand visuals
           handGroups.forEach(h => h.group.visible = true);
         }
       });
@@ -363,21 +409,27 @@
       }
     }
 
-    // rubbing detection & movement
+    // ---------- Improved rubbing usage (replaces old simple rub block) ----------
     const leftPos = handState[0].pos.clone();
     const rightPos = handState[1].pos.clone();
-    const palmDist = leftPos.distanceTo(rightPos);
+    const palmDist = (leftPos && rightPos) ? leftPos.distanceTo(rightPos) : 999;
+
     addRubSample(palmDist, t);
     const rubIntensity = computeRubIntensity();
-    if (rubIntensity > 0.03) {
+
+    const RUB_MOVE_THRESHOLD = 0.03;
+    if (rubIntensity > RUB_MOVE_THRESHOLD) {
       const camF = new THREE.Vector3(); camera.getWorldDirection(camF); camF.y = 0; camF.normalize();
       const nudge = 0.02 * (rubIntensity * 2.5);
       if (renderer.xr.isPresenting) {
-        playerBody.position.x += camF.x * nudge; playerBody.position.z += camF.z * nudge;
+        playerBody.position.x += camF.x * nudge;
+        playerBody.position.z += camF.z * nudge;
       } else {
-        playerBody.velocity.x += camF.x * nudge * 12; playerBody.velocity.z += camF.z * nudge * 12;
+        playerBody.velocity.x += camF.x * nudge * 12;
+        playerBody.velocity.z += camF.z * nudge * 12;
       }
     }
+    // -------------------------------------------------------------------------
 
     // update kinematic grabs
     updateHandKinematics();
