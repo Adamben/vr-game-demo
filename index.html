@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Hand VR — Both Triggers Move Forward (fixed) + Ping</title>
+  <title>Hand VR — Hands Move With You (rig-parented hands)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     body { margin:0; overflow:hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
@@ -18,7 +18,7 @@
   </style>
 </head>
 <body>
-  <div id="info"><b>Hand-tracking:</b> Enter VR. Pinch to shoot/grab. Hold both pinches to move forward — you'll hear a ping when movement begins.</div>
+  <div id="info"><b>Hand-tracking:</b> Enter VR. Pinch to shoot/grab. Hold both pinches to move forward — you'll hear a ping when movement begins. Hands now move with you.</div>
   <button id="enterVr">Enter VR (hand-tracking)</button>
   <div id="log">Status: idle</div>
 
@@ -218,7 +218,7 @@
     for (const [idx,d] of handGrabConstraints){ const p = handState[idx].pos; d.ctrlBody.position.copy(new CANNON.Vec3(p.x,p.y,p.z)); }
   }
 
-  // ---------- Rub detection (unchanged improved) ----------
+  // ---------- Rub detection ----------
   const rubHistory = [];
   function addRubSample(dist, t){ rubHistory.push({ dist, t }); if (rubHistory.length > 18) rubHistory.shift(); }
   function computeRubIntensity(){
@@ -249,7 +249,7 @@
       const o = audioCtx.createOscillator();
       const g = audioCtx.createGain();
       o.type = 'sine';
-      o.frequency.setValueAtTime(880, t0); // frequency
+      o.frequency.setValueAtTime(880, t0);
       g.gain.setValueAtTime(0.0001, t0);
       g.gain.exponentialRampToValueAtTime(0.08, t0 + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
@@ -273,8 +273,9 @@
       log('requesting immersive-vr session (hand-tracking)...');
       const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor','hand-tracking','bounded-floor'] });
       await renderer.xr.setSession(session);
+      // IMPORTANT CHANGE: parent XR hands to rig so they inherit rig transform when rig moves
       xrHand0 = renderer.xr.getHand(0); xrHand1 = renderer.xr.getHand(1);
-      scene.add(xrHand0, xrHand1);
+      rig.add(xrHand0, xrHand1); // <-- was scene.add(...) before
       session.addEventListener('inputsourceschange', () => {
         sessionSupportsHands = Array.from(session.inputSources).some(s => !!s.hand);
         log('hand support: ' + (sessionSupportsHands ? 'yes' : 'no'));
@@ -414,7 +415,7 @@
       for (const idx of pendingGrabStarts) startHandGrab(idx, handState[idx].pos);
     }
 
-    // ---------- rubbing movement (keeps improved rub usage) ----------
+    // ---------- rubbing movement ----------
     const leftPos = handState[0].pos.clone();
     const rightPos = handState[1].pos.clone();
     const palmDist = (leftPos && rightPos) ? leftPos.distanceTo(rightPos) : 999;
