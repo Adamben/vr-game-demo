@@ -1,462 +1,62 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Hand VR — Hands Move With You (rig-parented hands)</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    body { margin:0; overflow:hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
-    #info {
-      position: absolute; left: 10px; top: 10px; padding:10px 14px; background: rgba(0,0,0,0.45);
-      color: #fff; border-radius:8px; max-width:460px; line-height:1.2;
-    }
-    #enterVr {
-      position: absolute; right: 10px; top: 10px; z-index: 10;
-      padding: 10px 16px; background: #1e88e5; color: white; border: none; border-radius: 8px; font-size: 16px;
-    }
-    #log { position: absolute; left:10px; bottom:10px; background: rgba(0,0,0,0.35); color:#ddd; padding:8px 10px; border-radius:6px; font-size:12px; max-width: 420px; }
-  </style>
+<meta charset="UTF-8">
+<title>Dog Cam Viewer</title>
+<style>
+  body { font-family: sans-serif; text-align: center; background: #f0f0f0; }
+  video { width: 90%; max-width: 600px; margin-top: 30px; border-radius: 12px; border: 2px solid #333; background: #000; }
+  input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
+  #status { margin-top: 10px; font-weight: bold; }
+</style>
 </head>
 <body>
-  <div id="info"><b>Hand-tracking:</b> Enter VR. Pinch to shoot/grab. Hold both pinches to move forward — you'll hear a ping when movement begins. Hands now move with you.</div>
-  <button id="enterVr">Enter VR (hand-tracking)</button>
-  <div id="log">Status: idle</div>
+  <h1>🐶 Dog Cam Viewer</h1>
+  <input type="text" id="targetPeerId" placeholder="Enter computer's peer ID" />
+  <button id="connectBtn">Connect</button>
+  <video id="remoteVideo" autoplay playsinline></video>
+  <p id="status">Enter the computer's peer ID above.</p>
 
-  <script type="module">
-  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
-  import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
+  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  <script>
+    const remoteVideo = document.getElementById('remoteVideo');
+    const status = document.getElementById('status');
+    const connectBtn = document.getElementById('connectBtn');
+    const targetPeerIdInput = document.getElementById('targetPeerId');
+    let peer;
 
-  // ---------- Basic three / scene / rig ----------
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x081018);
-  const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.05, 1000);
+    connectBtn.addEventListener('click', () => {
+      const targetPeerId = targetPeerIdInput.value.trim();
+      if (!targetPeerId) return alert("Please enter the computer's peer ID.");
 
-  // rig holds the camera — moving rig moves the player's origin in world space
-  const rig = new THREE.Group();
-  rig.position.set(0,0,0);
-  camera.position.set(0, 0, 0); // camera local (XR headset provides offset)
-  rig.add(camera);
-  scene.add(rig);
-
-  const renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.xr.enabled = true;
-  renderer.shadowMap.enabled = true;
-  document.body.appendChild(renderer.domElement);
-
-  const logEl = document.getElementById('log');
-  function log(s){ logEl.textContent = 'Status: ' + s; console.log(s); }
-
-  // lights
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x222244, 0.8));
-  const dl = new THREE.DirectionalLight(0xffffff, 0.6); dl.position.set(3,10,6); dl.castShadow = true; scene.add(dl);
-
-  // ---------- Cannon world ----------
-  const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
-  world.broadphase = new CANNON.SAPBroadphase(world);
-  world.solver.iterations = 10;
-  const defaultMat = new CANNON.Material('default');
-  world.addContactMaterial(new CANNON.ContactMaterial(defaultMat, defaultMat, { friction: 0.5, restitution: 0.05 }));
-
-  // ground
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(120,120), new THREE.MeshStandardMaterial({ color:0x263238 }));
-  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
-  const groundBody = new CANNON.Body({ type:CANNON.Body.STATIC, shape:new CANNON.Plane(), material: defaultMat });
-  groundBody.quaternion.setFromEuler(-Math.PI/2,0,0); world.addBody(groundBody);
-
-  // central objects (same demo objects)
-  const centralMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshStandardMaterial({ color:0xff4444 }));
-  centralMesh.position.set(0,0.5,0); centralMesh.castShadow = true; scene.add(centralMesh);
-  const centralBody = new CANNON.Body({ type:CANNON.Body.STATIC, shape:new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5)), position:new CANNON.Vec3(0,0.5,0), material:defaultMat });
-  world.addBody(centralBody);
-
-  const sphereMesh = new THREE.Mesh(new THREE.SphereGeometry(0.4,32,32), new THREE.MeshStandardMaterial({ color:0x00ff88 }));
-  sphereMesh.castShadow = true; scene.add(sphereMesh);
-  const sphereBody = new CANNON.Body({ mass:1, shape:new CANNON.Sphere(0.4), position:new CANNON.Vec3(2,1,0), material:defaultMat });
-  world.addBody(sphereBody);
-
-  // interactables
-  const interactMeshes = [], interactBodies = [];
-  function spawnBox(x,y,z,color=0x4488ff,mass=2){
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.6,0.6), new THREE.MeshStandardMaterial({ color }));
-    m.castShadow=true; m.position.set(x,y,z); scene.add(m);
-    const b = new CANNON.Body({ mass, shape:new CANNON.Box(new CANNON.Vec3(0.3,0.3,0.3)), position:new CANNON.Vec3(x,y,z), material:defaultMat });
-    world.addBody(b); interactMeshes.push(m); interactBodies.push(b);
-    return { m,b };
-  }
-
-  // two static blocks
-  spawnBox(-3,0.375,-1.5,0x4455aa,0);
-  spawnBox(3,0.6,-2,0xaa5544,0);
-  // some dynamic ones
-  spawnBox(1.5,1,-1,0x4488ff,2); spawnBox(-1.5,1,-1,0xffaa33,2); spawnBox(0,2,-2,0x00ffaa,2);
-
-  // ---------- Player physics "body" that pushes objects ----------
-  // This body follows the headset world position each frame so collisions work.
-  const playerBody = new CANNON.Body({ mass:1, shape:new CANNON.Sphere(0.35), position:new CANNON.Vec3(0,1.0,4), fixedRotation:true, material:defaultMat });
-  playerBody.linearDamping = 0.9; world.addBody(playerBody);
-  const playerDebug = new THREE.Mesh(new THREE.SphereGeometry(0.35,8,8), new THREE.MeshBasicMaterial({ visible:false }));
-  scene.add(playerDebug);
-
-  // ---------- Hand visuals + palm physics bodies ----------
-  function makeHandVisual(color){
-    const g = new THREE.Group();
-    const wrist = new THREE.Mesh(new THREE.SphereGeometry(0.04,8,8), new THREE.MeshStandardMaterial({ color }));
-    const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.03,8,8), new THREE.MeshStandardMaterial({ color:0xffeebb }));
-    const index = new THREE.Mesh(new THREE.SphereGeometry(0.03,8,8), new THREE.MeshStandardMaterial({ color:0xccffcc }));
-    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.04,12,12), new THREE.MeshStandardMaterial({ color:0xffdd66 }));
-    g.add(wrist, thumb, index, muzzle);
-    g.visible = false; scene.add(g);
-    return { group:g, wrist, thumb, index, muzzle };
-  }
-  const handGroups = [ makeHandVisual(0xff9966), makeHandVisual(0x66ccff) ];
-
-  // palm kinematic bodies that push objects
-  const palmRadius = 0.06;
-  const palmBodies = [
-    new CANNON.Body({ mass:0, type:CANNON.Body.KINEMATIC, shape:new CANNON.Sphere(palmRadius), position:new CANNON.Vec3(0,-100,0), material: defaultMat }),
-    new CANNON.Body({ mass:0, type:CANNON.Body.KINEMATIC, shape:new CANNON.Sphere(palmRadius), position:new CANNON.Vec3(0,-100,0), material: defaultMat })
-  ];
-  palmBodies.forEach(pb => world.addBody(pb));
-
-  // ---------- Hand / pinch detection helpers ----------
-  let xrHand0 = null, xrHand1 = null;
-  function getJointPositionSafe(hand, names){
-    if (!hand || !hand.joints) return null;
-    for (const n of names) {
-      try {
-        const j = hand.joints[n];
-        if (j && j.matrixWorld) return new THREE.Vector3().setFromMatrixPosition(j.matrixWorld);
-      } catch(e){}
-    }
-    const tmp = new THREE.Vector3(); if (hand) hand.getWorldPosition(tmp); return tmp;
-  }
-
-  function detectPinch(hand){
-    const thumbNames = ['thumb-tip','thumb-phalanx-tip','thumb-metacarpal'];
-    const indexNames = ['index-finger-tip','index-tip','index-finger-phalanx-tip'];
-    const thumbP = getJointPositionSafe(hand, thumbNames);
-    const indexP = getJointPositionSafe(hand, indexNames);
-    if (!thumbP || !indexP) return { pinch:false, thumbP, indexP, distance:999 };
-    const d = thumbP.distanceTo(indexP);
-    return { pinch: d < 0.045, thumbP, indexP, distance:d };
-  }
-
-  function estimateHandForward(hand){
-    const wrist = getJointPositionSafe(hand, ['wrist','wrist-radius']);
-    const indexTip = getJointPositionSafe(hand, ['index-finger-tip','index-tip','index-finger-phalanx-tip']);
-    const thumbTip = getJointPositionSafe(hand, ['thumb-tip','thumb-phalanx-tip']);
-    const dir = new THREE.Vector3();
-    if (wrist && indexTip) dir.copy(indexTip).sub(wrist).normalize();
-    else if (indexTip && thumbTip) dir.copy(indexTip).sub(thumbTip).normalize();
-    else camera.getWorldDirection(dir);
-    if (Math.abs(dir.y) > 0.85) { dir.y *= 0.5; dir.normalize(); }
-    return dir;
-  }
-
-  function raycastBodies(origin, direction, maxDist=30){
-    let best=null, bestDist=Infinity;
-    for (const b of [sphereBody, ...interactBodies]){
-      if (b.type === CANNON.Body.STATIC) continue;
-      const pos = new THREE.Vector3(b.position.x,b.position.y,b.position.z);
-      const to = pos.clone().sub(origin);
-      const proj = to.dot(direction);
-      if (proj < 0 || proj > maxDist) continue;
-      const perp = to.clone().sub(direction.clone().multiplyScalar(proj)).length();
-      const radius = (b.shapes[0] instanceof CANNON.Sphere) ? b.shapes[0].radius : 0.35;
-      if (perp <= radius + 0.12 && proj < bestDist){ bestDist = proj; best = { body:b, hitPoint: origin.clone().add(direction.clone().multiplyScalar(proj)), dist:proj }; }
-    }
-    return best;
-  }
-
-  function handShoot(hand, muzzlePos){
-    const dir = estimateHandForward(hand);
-    if (dir.length() < 1e-4){ camera.getWorldDirection(dir); dir.y *= 0.1; dir.normalize(); }
-    const origin = muzzlePos.clone();
-    const hit = raycastBodies(origin, dir, 40);
-    if (hit){
-      const impulse = new CANNON.Vec3(dir.x, dir.y, dir.z).scale(8);
-      hit.body.applyImpulse(impulse, hit.body.position);
-    } else {
-      const pGeo = new THREE.SphereGeometry(0.05,8,8);
-      const pMat = new THREE.MeshStandardMaterial({ color:0xffdd66 });
-      const pMesh = new THREE.Mesh(pGeo, pMat); pMesh.castShadow=true; scene.add(pMesh);
-      const spawn = origin.clone().add(dir.clone().multiplyScalar(0.08));
-      pMesh.position.copy(spawn);
-      const pBody = new CANNON.Body({ mass:0.18, shape:new CANNON.Sphere(0.05), position:new CANNON.Vec3(spawn.x, spawn.y, spawn.z), material:defaultMat });
-      pBody.velocity.set(dir.x*24, dir.y*24, dir.z*24);
-      world.addBody(pBody); interactMeshes.push(pMesh); interactBodies.push(pBody);
-      setTimeout(()=>{ try{ scene.remove(pMesh); world.removeBody(pBody); }catch(e){} }, 6000);
-    }
-  }
-
-  // grabs
-  const handGrabConstraints = new Map();
-  function startHandGrab(index, pos){
-    if (handGrabConstraints.has(index)) return;
-    let best=null, bd=999;
-    for (const b of [sphereBody, ...interactBodies]) {
-      const d = pos.distanceTo(new THREE.Vector3(b.position.x,b.position.y,b.position.z));
-      if (d < 0.28 && d < bd) { bd=d; best=b; }
-    }
-    if (!best) return;
-    const ctrl = new CANNON.Body({ mass:0, type:CANNON.Body.KINEMATIC });
-    ctrl.position.copy(new CANNON.Vec3(pos.x,pos.y,pos.z));
-    world.addBody(ctrl);
-    const pivot = best.pointToLocalFrame(new CANNON.Vec3(pos.x,pos.y,pos.z));
-    const constraint = new CANNON.PointToPointConstraint(best, pivot, ctrl, new CANNON.Vec3(0,0,0));
-    world.addConstraint(constraint);
-    handGrabConstraints.set(index, { constraint, ctrlBody:ctrl, targetBody:best });
-  }
-  function endHandGrab(index, throwDir=null){
-    const d = handGrabConstraints.get(index); if (!d) return;
-    if (throwDir) d.targetBody.applyImpulse(new CANNON.Vec3(throwDir.x, throwDir.y, throwDir.z).scale(2.5), d.targetBody.position);
-    try{ world.removeConstraint(d.constraint); world.removeBody(d.ctrlBody); }catch(e){}
-    handGrabConstraints.delete(index);
-  }
-  function updateHandKinematics(){
-    for (const [idx,d] of handGrabConstraints){ const p = handState[idx].pos; d.ctrlBody.position.copy(new CANNON.Vec3(p.x,p.y,p.z)); }
-  }
-
-  // ---------- Rub detection ----------
-  const rubHistory = [];
-  function addRubSample(dist, t){ rubHistory.push({ dist, t }); if (rubHistory.length > 18) rubHistory.shift(); }
-  function computeRubIntensity(){
-    if (rubHistory.length < 6) return 0;
-    const D = rubHistory.map(s => s.dist), T = rubHistory.map(s => s.t);
-    let sumAbsDeriv = 0; const derivs = [];
-    for (let i=1;i<D.length;i++){ const dt = Math.max(1e-4, T[i] - T[i-1]); const deriv = (D[i] - D[i-1]) / dt; derivs.push(deriv); sumAbsDeriv += Math.abs(deriv); }
-    const avgAbsDeriv = sumAbsDeriv / Math.max(1, derivs.length);
-    const meanD = D.reduce((a,b)=>a+b,0)/D.length;
-    let sumSq=0; for (const v of D) sumSq += (v-meanD)*(v-meanD);
-    const stdDev = Math.sqrt(sumSq / D.length);
-    let signChanges = 0; const magThreshold = 0.0025;
-    for (let i=1;i<derivs.length;i++){ if (Math.abs(derivs[i]) < magThreshold && Math.abs(derivs[i-1]) < magThreshold) continue; if (derivs[i] * derivs[i-1] < 0) signChanges++; }
-    const latest = D[D.length - 1];
-    const closeness = Math.max(0, 1 - (latest / 0.22));
-    const MIN_AVG_DERIV = 0.015, MIN_STDDEV = 0.007, MIN_SIGN_CHANGES = 2;
-    if (avgAbsDeriv < MIN_AVG_DERIV || stdDev < MIN_STDDEV || signChanges < MIN_SIGN_CHANGES) return 0;
-    const intensity = avgAbsDeriv * 0.02 * closeness;
-    return Math.max(0, Math.min(1.5, intensity));
-  }
-
-  // ---------- Audio ping for both-trigger start ----------
-  let audioCtx = null;
-  function playPing(){
-    try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const t0 = audioCtx.currentTime;
-      const o = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(880, t0);
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.08, t0 + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
-      o.connect(g); g.connect(audioCtx.destination);
-      o.start(t0); o.stop(t0 + 0.2);
-    } catch (e) { console.warn('Audio failed', e); }
-  }
-
-  // ---------- Hand state ----------
-  const handState = [
-    { pinching:false, pinchStart:0, pos:new THREE.Vector3(), prevPos:new THREE.Vector3(), vel:new THREE.Vector3() },
-    { pinching:false, pinchStart:0, pos:new THREE.Vector3(), prevPos:new THREE.Vector3(), vel:new THREE.Vector3() }
-  ];
-
-  // ---------- XR session + input handling ----------
-  const enterBtn = document.getElementById('enterVr');
-  let sessionSupportsHands = false;
-  enterBtn.addEventListener('click', async () => {
-    if (!navigator.xr) { alert('WebXR not available'); return; }
-    try {
-      log('requesting immersive-vr session (hand-tracking)...');
-      const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor','hand-tracking','bounded-floor'] });
-      await renderer.xr.setSession(session);
-      // IMPORTANT CHANGE: parent XR hands to rig so they inherit rig transform when rig moves
-      xrHand0 = renderer.xr.getHand(0); xrHand1 = renderer.xr.getHand(1);
-      rig.add(xrHand0, xrHand1); // <-- was scene.add(...) before
-      session.addEventListener('inputsourceschange', () => {
-        sessionSupportsHands = Array.from(session.inputSources).some(s => !!s.hand);
-        log('hand support: ' + (sessionSupportsHands ? 'yes' : 'no'));
-        handGroups.forEach(h => h.group.visible = sessionSupportsHands);
+      peer = new Peer({
+        host: '0.peerjs.com',
+        port: 443,
+        path: '/',
+        secure: true
       });
-      sessionSupportsHands = Array.from(session.inputSources).some(s => !!s.hand);
-      log('session started — hand support: ' + (sessionSupportsHands ? 'yes' : 'no'));
-      handGroups.forEach(h => h.group.visible = sessionSupportsHands);
-      enterBtn.style.display = 'none';
-    } catch (err) {
-      console.error(err);
-      log('XR session request failed — ' + (err && err.message ? err.message : err));
-    }
-  });
 
-  // keyboard spawn fallback
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyX') {
-      const cp = new THREE.Vector3(); camera.getWorldPosition(cp); const fd = new THREE.Vector3(); camera.getWorldDirection(fd).normalize();
-      spawnBox(cp.x + fd.x*1.2, cp.y + 0.4, cp.z + fd.z*1.2, 0xff88ff, 2);
-    }
-  });
+      peer.on('open', id => {
+        console.log('Viewer peer ID:', id);
+        status.textContent = 'Connecting to computer...';
 
-  // ---------- Orbit function ----------
-  function maintainOrbit(dt){
-    let grabbed=false; for (const v of handGrabConstraints.values()) if (v.targetBody === sphereBody) grabbed=true;
-    if (grabbed) return;
-    const center = centralBody.position; const orbitalRadius = 2.0; const speedOrbit = 1.2;
-    const t = performance.now()*0.001;
-    const des = new CANNON.Vec3(center.x + Math.cos(t*speedOrbit)*orbitalRadius, 1.0 + Math.sin(t*0.5)*0.3, center.z + Math.sin(t*speedOrbit)*orbitalRadius);
-    const kp=20, kd=3; const pos = sphereBody.position, vel = sphereBody.velocity;
-    sphereBody.applyForce(new CANNON.Vec3((des.x-pos.x)*kp - vel.x*kd, (des.y-pos.y)*kp - vel.y*kd, (des.z-pos.z)*kp - vel.z*kd), pos);
-  }
+        const call = peer.call(targetPeerId, null);
+        call.on('stream', stream => {
+          remoteVideo.srcObject = stream;
+          status.textContent = `Connected! Viewing ${targetPeerId}`;
+        });
 
-  // ---------- Sync physics -> visuals (playerBody follows headset world pos) ----------
-  function syncPhysicsGraphics(){
-    // compute headset world position
-    const headWorld = new THREE.Vector3();
-    camera.getWorldPosition(headWorld); // camera world position = rig.position + headset offset
+        call.on('error', err => {
+          console.error(err);
+          status.textContent = 'Connection error.';
+        });
+      });
 
-    // set playerBody to follow the head horizontally (but slightly lower)
-    playerBody.position.x = headWorld.x;
-    playerBody.position.z = headWorld.z;
-    playerBody.position.y = Math.max(0.3, headWorld.y - 0.55);
-
-    // update meshes
-    sphereMesh.position.copy(sphereBody.position); sphereMesh.quaternion.copy(sphereBody.quaternion);
-    centralMesh.position.copy(centralBody.position); centralMesh.quaternion.copy(centralBody.quaternion);
-    for (let i=0;i<interactMeshes.length;i++){ interactMeshes[i].position.copy(interactBodies[i].position); interactMeshes[i].quaternion.copy(interactBodies[i].quaternion); }
-    playerDebug.position.copy(playerBody.position);
-  }
-
-  // ---------- Main loop with fixed-step physics ----------
-  let last = null; const fixedStep = 1/60;
-  let prevBothHeld = false; // track edge for ping
-  function animate(ts){
-    renderer.setAnimationLoop(animate);
-    const t = ts ? ts/1000 : performance.now()/1000;
-    if (!last) last = t;
-    const dt = Math.min(1/30, t - last); last = t;
-
-    // update hands
-    const hands = [xrHand0, xrHand1];
-    const pendingGrabStarts = [];
-
-    for (let i=0;i<2;i++){
-      const hand = hands[i];
-      if (!hand) { handState[i].pos.set(0,0,0); continue; }
-      const pin = detectPinch(hand);
-      const posEstimate = pin.indexP || pin.thumbP || getJointPositionSafe(hand, ['wrist','wrist-radius']) || new THREE.Vector3();
-      handState[i].prevPos.copy(handState[i].pos); handState[i].pos.copy(posEstimate);
-      const dtPos = Math.max(1e-4, dt);
-      handState[i].vel.copy(handState[i].pos).sub(handState[i].prevPos).divideScalar(dtPos);
-
-      // visuals
-      const hv = handGroups[i];
-      if (hv.group.visible) {
-        const wristP = getJointPositionSafe(hand, ['wrist','wrist-radius']);
-        if (wristP) hv.wrist.position.copy(wristP);
-        if (pin.thumbP) hv.thumb.position.copy(pin.thumbP);
-        if (pin.indexP) hv.index.position.copy(pin.indexP);
-        const forward = estimateHandForward(hand);
-        const muzzlePos = handState[i].pos.clone().add(forward.clone().multiplyScalar(0.06));
-        hv.muzzle.position.copy(muzzlePos);
-      }
-
-      // move palm body
-      const pb = palmBodies[i];
-      if (handState[i].pos) pb.position.copy(new CANNON.Vec3(handState[i].pos.x, handState[i].pos.y, handState[i].pos.z));
-      else pb.position.set(0,-100,0);
-
-      // pinch transitions
-      const now = t;
-      if (pin.pinch && !handState[i].pinching) { handState[i].pinching = true; handState[i].pinchStart = now; }
-      else if (!pin.pinch && handState[i].pinching) {
-        const held = now - handState[i].pinchStart;
-        if (held < 0.22) {
-          const muzzlePos = (handGroups[i].group.visible) ? handGroups[i].muzzle.position : handState[i].pos;
-          handShoot(hand, muzzlePos);
-        } else {
-          const throwDir = estimateHandForward(hand).clone();
-          endHandGrab(i, throwDir);
-        }
-        handState[i].pinching = false;
-      } else if (pin.pinch && handState[i].pinching) {
-        const held = now - handState[i].pinchStart;
-        if (held > 0.18 && !handGrabConstraints.has(i)) pendingGrabStarts.push(i);
-      }
-    }
-
-    // ---------- Both-triggers-to-move (fixed) ----------
-    const bothPinching = handState[0].pinching && handState[1].pinching;
-    const bothHeld = bothPinching && ((t - handState[0].pinchStart) > 0.15) && ((t - handState[1].pinchStart) > 0.15);
-
-    // edge detect to play ping exactly once when movement begins
-    if (bothHeld && !prevBothHeld) {
-      playPing();
-    }
-    prevBothHeld = bothHeld;
-
-    // decide movement: move rig in XR, move playerBody on desktop
-    const camF = new THREE.Vector3(); camera.getWorldDirection(camF); camF.y = 0; camF.normalize();
-
-    if (bothHeld) {
-      const nudgeXR = 0.03; // movement per frame while both held (XR)
-      if (renderer.xr.isPresenting) {
-        // move rig (camera is child of rig). This effectively translates the player's origin in the world.
-        rig.position.x += camF.x * nudgeXR;
-        rig.position.z += camF.z * nudgeXR;
-      } else {
-        // desktop fallback: add velocity to player body
-        playerBody.velocity.x += camF.x * 0.6;
-        playerBody.velocity.z += camF.z * 0.6;
-      }
-    } else {
-      // start grabs only if both-held not active
-      for (const idx of pendingGrabStarts) startHandGrab(idx, handState[idx].pos);
-    }
-
-    // ---------- rubbing movement ----------
-    const leftPos = handState[0].pos.clone();
-    const rightPos = handState[1].pos.clone();
-    const palmDist = (leftPos && rightPos) ? leftPos.distanceTo(rightPos) : 999;
-    addRubSample(palmDist, t);
-    const rubIntensity = computeRubIntensity();
-    const RUB_MOVE_THRESHOLD = 0.03;
-    if (rubIntensity > RUB_MOVE_THRESHOLD) {
-      const nudge = 0.02 * (rubIntensity * 2.5);
-      if (renderer.xr.isPresenting) {
-        rig.position.x += camF.x * nudge;
-        rig.position.z += camF.z * nudge;
-      } else {
-        playerBody.velocity.x += camF.x * nudge * 12;
-        playerBody.velocity.z += camF.z * nudge * 12;
-      }
-    }
-
-    // update kinematic grabs
-    updateHandKinematics();
-
-    // orbit sphere
-    maintainOrbit(dt);
-
-    // step physics and sync visuals
-    world.step(fixedStep, dt, 4);
-    syncPhysicsGraphics();
-
-    renderer.render(scene, camera);
-  }
-  renderer.setAnimationLoop(animate);
-
-  // resize
-  window.addEventListener('resize', ()=> { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-
-  log('ready — click "Enter VR" to start XR with hand-tracking (if supported).');
-
-  // expose debug
-  window.spawnBox = spawnBox;
-  window.playerBody = playerBody;
-  window.rig = rig;
-
+      peer.on('error', err => {
+        console.error(err);
+        status.textContent = 'PeerJS error: ' + err;
+      });
+    });
   </script>
 </body>
 </html>
