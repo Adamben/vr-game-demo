@@ -2,61 +2,59 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Dog Cam Viewer</title>
+<title>Dog Cam Streamer - Debug</title>
 <style>
-  body { font-family: sans-serif; text-align: center; background: #f0f0f0; }
-  video { width: 90%; max-width: 600px; margin-top: 30px; border-radius: 12px; border: 2px solid #333; background: #000; }
-  input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
-  #status { margin-top: 10px; font-weight: bold; }
+body { font-family: monospace; text-align: center; background: #f5f5f5; }
+video { width: 80%; max-width: 600px; margin-top: 20px; border-radius: 12px; border: 2px solid #333; background: #000; }
+#peerIdDisplay { font-weight: bold; margin-top: 10px; }
+#status { margin-top: 10px; font-weight: bold; }
+#log { text-align: left; margin: 10px auto; width: 90%; max-width: 600px; height: 200px; overflow-y: auto; border: 1px solid #333; padding: 5px; background: #fff; }
+button { margin-top: 5px; padding: 5px 10px; }
 </style>
 </head>
 <body>
-  <h1>🐶 Dog Cam Viewer</h1>
-  <input type="text" id="targetPeerId" placeholder="Enter computer's peer ID" />
-  <button id="connectBtn">Connect</button>
-  <video id="remoteVideo" autoplay playsinline></video>
-  <p id="status">Enter the computer's peer ID above.</p>
+<h1>🐶 Dog Cam Streamer (Debug)</h1>
+<video id="localVideo" autoplay muted playsinline></video>
+<p id="peerIdDisplay">Peer ID: generating...</p>
+<p id="status">Waiting for viewers...</p>
+<div>
+<button id="clearLog">Clear Log</button>
+</div>
+<div id="log"></div>
 
-  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-  <script>
-    const remoteVideo = document.getElementById('remoteVideo');
-    const status = document.getElementById('status');
-    const connectBtn = document.getElementById('connectBtn');
-    const targetPeerIdInput = document.getElementById('targetPeerId');
-    let peer;
+<script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+<script>
+const localVideo = document.getElementById('localVideo');
+const peerIdDisplay = document.getElementById('peerIdDisplay');
+const status = document.getElementById('status');
+const logDiv = document.getElementById('log');
+const clearLogBtn = document.getElementById('clearLog');
 
-    connectBtn.addEventListener('click', () => {
-      const targetPeerId = targetPeerIdInput.value.trim();
-      if (!targetPeerId) return alert("Please enter the computer's peer ID.");
+function log(msg) {
+    console.log(msg);
+    logDiv.innerHTML += msg + '<br>';
+    logDiv.scrollTop = logDiv.scrollHeight;
+}
 
-      peer = new Peer({
-        host: '0.peerjs.com',
-        port: 443,
-        path: '/',
-        secure: true
-      });
+clearLogBtn.onclick = () => { logDiv.innerHTML = ''; };
 
-      peer.on('open', id => {
-        console.log('Viewer peer ID:', id);
-        status.textContent = 'Connecting to computer...';
+const peer = new Peer({
+    host: '0.peerjs.com',
+    port: 443,
+    path: '/',
+    secure: true
+});
 
-        const call = peer.call(targetPeerId, null);
-        call.on('stream', stream => {
-          remoteVideo.srcObject = stream;
-          status.textContent = `Connected! Viewing ${targetPeerId}`;
-        });
+peer.on('open', id => {
+    peerIdDisplay.textContent = `Peer ID: ${id}`;
+    log(`[OPEN] Peer created with ID: ${id}`);
+});
 
-        call.on('error', err => {
-          console.error(err);
-          status.textContent = 'Connection error.';
-        });
-      });
-
-      peer.on('error', err => {
-        console.error(err);
-        status.textContent = 'PeerJS error: ' + err;
-      });
-    });
-  </script>
-</body>
-</html>
+peer.on('call', call => {
+    log(`[CALL] Incoming call from ${call.peer}`);
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+            localVideo.srcObject = stream;
+            call.answer(stream);
+            status.textContent = `Connected to viewer: ${call.peer}`;
+            log(`[STREAM] Webcam stream sent to ${call.peer}`);
